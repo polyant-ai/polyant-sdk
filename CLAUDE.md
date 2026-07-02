@@ -28,8 +28,9 @@ Questo pacchetto **NON possiede il registro dei tool** — lo possiede il loader
 Sia il motore (`polyant-enterprise`) sia i plugin lo referenziano come **git-dependency** con tag:
 
 ```
-git+ssh://git@github.com/polyant-ai/polyant-sdk.git#<tag>
+git+https://github.com/polyant-ai/polyant-sdk.git#<tag>
 ```
+(repo pubblico → clone https senza auth; niente chiavi SSH necessarie)
 
 Ognuno risolve la **propria** copia (vedi il principio del confine dati sopra). `zod` è una **peer dependency** — la fornisce il consumer.
 

@@ -13,8 +13,8 @@ repo, resolve its own dependencies, and be built/bundled independently.
 ## Install
 
 ```bash
-# published (private) git repo — reference by tag
-npm i -D git+ssh://git@github.com/polyant-ai/polyant-sdk.git#v1.0.0
+# public git repo — reference by tag (no auth needed)
+npm i -D git+https://github.com/polyant-ai/polyant-sdk.git#v1.0.0
 npm i zod              # peer dependency (you author schemas in zod)
 ```
 
@@ -23,7 +23,7 @@ Your plugin's `package.json`:
 ```jsonc
 {
   "peerDependencies": { "@polyant-ai/plugin-sdk": "*" },
-  "devDependencies":  { "@polyant-ai/plugin-sdk": "git+ssh://git@github.com/polyant-ai/polyant-sdk.git#v1.0.0" },
+  "devDependencies":  { "@polyant-ai/plugin-sdk": "git+https://github.com/polyant-ai/polyant-sdk.git#v1.0.0" },
   "dependencies":     { "zod": "^3.23.0" /* + any lib your tools call */ }
 }
 ```
