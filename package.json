@@ -1,0 +1,44 @@
+{
+  "name": "@polyant-ai/plugin-sdk",
+  "version": "1.0.0",
+  "description": "Public tool-authoring contract for Polyant engine plugins (types + defineTool). Stateless: the engine loader owns the registry.",
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "prepare": "npm run build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "zod-to-json-schema": "^3.25.2"
+  },
+  "peerDependencies": {
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^3.0.0",
+    "zod": "^3.23.0"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "restricted"
+  }
+}
