@@ -105,4 +105,6 @@ major bump.
 
 ## License
 
-AGPL-3.0-or-later.
+[Apache License 2.0](LICENSE). This SDK is intentionally permissive so plugin
+authors can build and ship tools under whatever license they choose — the
+engine that consumes it is licensed separately.

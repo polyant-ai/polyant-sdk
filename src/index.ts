@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: Apache-2.0
 
 export { defineTool, toJsonSchema, normalizeRequiredSecrets, requiredSecretKeys } from "./contract.js";
 export type {
