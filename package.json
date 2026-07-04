@@ -1,6 +1,6 @@
 {
   "name": "@polyant-ai/plugin-sdk",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Public tool-authoring contract for Polyant engine plugins (types + defineTool). Stateless: the engine loader owns the registry.",
   "author": "Exelab S.r.l.",
   "license": "Apache-2.0",

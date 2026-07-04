@@ -58,6 +58,40 @@ export interface ConversationStateApi {
   readonly channel: ChannelStateIdentity | undefined;
 }
 
+/** Role of a persisted conversation message. */
+export type ConversationRole = "user" | "assistant" | "system" | "tool";
+
+/** A single persisted conversation message, text-only content. */
+export interface ConversationMessage {
+  role: ConversationRole;
+  content: string;
+}
+
+/** Options for {@link ConversationHistoryApi.getRecentMessages}. */
+export interface RecentMessagesOptions {
+  /** Restrict to these roles, applied BEFORE the `n` cut.
+   *  Omitted or empty array ⇒ all roles. */
+  roles?: readonly ConversationRole[];
+}
+
+/**
+ * Read-only access to the current conversation's recent messages. Spec-first
+ * structural contract (issue #1): the engine's concrete history accessor is
+ * implemented against this shape — as for {@link ConversationStateApi}, the SDK
+ * never imports engine internals and no cross-package `instanceof` is involved.
+ */
+export interface ConversationHistoryApi {
+  /**
+   * The most recent persisted messages, oldest → newest, text-only content.
+   * Includes the CURRENT (in-flight) user turn as the last element.
+   *
+   * Filtering: when `opts.roles` is provided, the engine filters by role FIRST,
+   * then returns the last `n` matching messages. `n === 0` returns ALL matching
+   * messages (no cap); `n < 0` is treated as `0`.
+   */
+  getRecentMessages(n: number, opts?: RecentMessagesOptions): Promise<ConversationMessage[]>;
+}
+
 /**
  * Per-instance API keys for AI provider calls
  * (mirrors engine `ai-gateway/types.ts` ChatRequest["apiKeys"]).
@@ -93,4 +127,7 @@ export interface ToolContext {
   provider?: string;
   /** Shared per-conversation key/value state (trusted, tool-to-tool). */
   state?: ConversationStateApi;
+  /** Read-only accessor for the recent conversation history.
+   *  Absent on engines that don't implement it — plugins MUST handle undefined. */
+  conversation?: ConversationHistoryApi;
 }
