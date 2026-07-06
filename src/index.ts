@@ -16,5 +16,9 @@ export type {
   Attachment,
   ChannelStateIdentity,
   ConversationStateApi,
+  ConversationRole,
+  ConversationMessage,
+  RecentMessagesOptions,
+  ConversationHistoryApi,
   ToolApiKeys,
 } from "./context-types.js";
