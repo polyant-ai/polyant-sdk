@@ -22,3 +22,12 @@ export type {
   ConversationHistoryApi,
   ToolApiKeys,
 } from "./context-types.js";
+export { defineHook } from "./hooks.js";
+export type {
+  HookFunctionDefinition,
+  HookResult,
+  HookContext,
+  HookEvent,
+  HookEventPayload,
+  HookAi,
+} from "./hooks.js";
