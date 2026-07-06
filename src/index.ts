@@ -24,6 +24,7 @@ export type {
 } from "./context-types.js";
 export { defineHook } from "./hooks.js";
 export type {
+  HookSpec,
   HookFunctionDefinition,
   HookResult,
   HookContext,

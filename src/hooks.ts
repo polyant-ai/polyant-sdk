@@ -11,7 +11,11 @@ import type {
   ToolApiKeys,
   AuditLogger,
 } from "./context-types.js";
-import type { RequiredSecretsInput } from "./contract.js";
+import {
+  normalizeRequiredSecrets,
+  type RequiredSecretsInput,
+  type RequiredSecretSpec,
+} from "./contract.js";
 
 /** Conversation lifecycle events a hook can subscribe to. */
 export type HookEvent =
@@ -43,7 +47,13 @@ export interface HookAi {
 /**
  * Everything a hook handler receives. Read-mostly; the only mutations are via
  * `state` (commit-on-success) and the returned {@link HookResult}. Modelled on
- * {@link ToolContext}, plus `event`/`payload`/`ai`.
+ * {@link ToolContext}, plus `event` / `payload` / `ai`.
+ *
+ * NOTE on required-ness vs {@link ToolContext}: `conversation` and `secrets` are
+ * REQUIRED here, whereas `ToolContext` declares `conversation?` / `secrets?`
+ * optional (for backward-compat with engines predating the history accessor).
+ * Hook functions are a v1.2.0 feature: any engine that runs hooks always builds
+ * both, so handlers need no undefined-guard.
  */
 export interface HookContext {
   event: HookEvent;
@@ -66,23 +76,58 @@ export type HookResult =
   | {
       /** Pre-LLM (conversation_start, message_received): skip the LLM, reply with this. */
       halt?: { message: string };
-      /** response_generated: replace the LLM reply with this. Requires `mutatesResponse`. */
+      /**
+       * On `response_generated`: replace the LLM reply with this. The engine only
+       * honors it when the hook declares `mutatesResponse: true` (which makes the
+       * engine run the turn non-streamed); on a streamed turn without that flag the
+       * tokens have already been sent, so the engine ignores it with a warning
+       * rather than silently. This is a RUNTIME contract enforced by the engine —
+       * it cannot be checked statically here, since the value is a handler return,
+       * not a static field.
+       */
       replaceResponse?: { message: string };
       /** Pre-LLM: extra one-shot context appended to this turn's LLM input. */
       injectContext?: string;
     };
 
-export interface HookFunctionDefinition {
+/**
+ * Author-facing hook spec — what you pass to {@link defineHook}. `requiredSecrets`
+ * is normalized (and validated) at definition time, exactly as {@link ToolSpec}.
+ */
+export interface HookSpec {
   name: string;
   description: string;
-  /** Scoped secrets, same spec shape as tools. */
+  /** Scoped secrets, same spec shape (and load-time validation) as tools. */
   requiredSecrets?: RequiredSecretsInput;
-  /** True ⇒ turns with this hook on `response_generated` run non-streamed (declare-and-buffer). */
+  /** Declare `true` if the handler may return `replaceResponse`, so the engine
+   *  disables token streaming for affected turns (declare-and-buffer). */
   mutatesResponse?: boolean;
   handler: (ctx: HookContext) => Promise<HookResult> | HookResult;
 }
 
-/** Identity passthrough (mirrors defineTool): the engine consumes this object. */
-export function defineHook(def: HookFunctionDefinition): HookFunctionDefinition {
-  return def;
+/**
+ * The serialized definition the engine loader collects. `requiredSecrets` is the
+ * NORMALIZED `RequiredSecretSpec[]` (mirrors {@link ToolDefinition}).
+ */
+export interface HookFunctionDefinition {
+  name: string;
+  description: string;
+  requiredSecrets: RequiredSecretSpec[];
+  mutatesResponse?: boolean;
+  handler: (ctx: HookContext) => Promise<HookResult> | HookResult;
+}
+
+/**
+ * Author a hook function. Mirrors {@link defineTool}: normalizes + validates
+ * `requiredSecrets` at module load (throws on malformed specs), returning the
+ * definition the engine loader collects.
+ */
+export function defineHook(spec: HookSpec): HookFunctionDefinition {
+  return {
+    name: spec.name,
+    description: spec.description,
+    requiredSecrets: normalizeRequiredSecrets(spec.requiredSecrets, spec.name),
+    mutatesResponse: spec.mutatesResponse,
+    handler: spec.handler,
+  };
 }
