@@ -14,7 +14,7 @@ repo, resolve its own dependencies, and be built/bundled independently.
 
 ```bash
 # public git repo — reference by tag (no auth needed)
-npm i -D git+https://github.com/polyant-ai/polyant-sdk.git#v1.0.0
+npm i -D git+https://github.com/polyant-ai/polyant-sdk.git#v1.2.0
 npm i zod              # peer dependency (you author schemas in zod)
 ```
 
@@ -23,7 +23,7 @@ Your plugin's `package.json`:
 ```jsonc
 {
   "peerDependencies": { "@polyant-ai/plugin-sdk": "*" },
-  "devDependencies":  { "@polyant-ai/plugin-sdk": "git+https://github.com/polyant-ai/polyant-sdk.git#v1.0.0" },
+  "devDependencies":  { "@polyant-ai/plugin-sdk": "git+https://github.com/polyant-ai/polyant-sdk.git#v1.2.0" },
   "dependencies":     { "zod": "^3.23.0" /* + any lib your tools call */ }
 }
 ```
@@ -91,10 +91,13 @@ inside it and return `{ error: "..." }` rather than throwing.
 
 ## API surface
 
-- `defineTool(spec) => ToolDefinition` — the authoring entry point.
+- `defineTool(spec) => ToolDefinition` — the tool authoring entry point.
+- `defineHook(spec) => HookFunctionDefinition` — the hook authoring entry point (deterministic lifecycle code, never LLM-invoked).
 - `toJsonSchema(zodSchema)` — the zod→JSON-Schema conversion `defineTool` uses.
 - `normalizeRequiredSecrets`, `requiredSecretKeys` — helpers for the secrets contract.
-- Types: `ToolSpec`, `ToolDefinition`, `ToolContext`, `RequiredSecretSpec`, `ToolInfo`, `InstanceSlug`, `AuditLogger`, `Attachment`, `ConversationStateApi`, `ToolApiKeys`.
+- Tool types: `ToolSpec`, `ToolDefinition`, `ToolInfo`, `ToolInputExample`, `RequiredSecretSpec`, `RequiredSecretsInput`.
+- Context types: `ToolContext`, `InstanceSlug`, `AuditLogger`, `Attachment`, `ChannelStateIdentity`, `ConversationStateApi`, `ConversationHistoryApi`, `ConversationMessage`, `ConversationRole`, `RecentMessagesOptions`, `ToolApiKeys`.
+- Hook types: `HookSpec`, `HookFunctionDefinition`, `HookContext`, `HookResult`, `HookEvent`, `HookEventPayload`, `HookAi`.
 
 ## Versioning
 

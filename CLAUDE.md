@@ -1,63 +1,63 @@
 # @polyant-ai/plugin-sdk
 
-Guida per chi lavora **dentro** questa repo (sviluppatori + agenti AI). Per l'authoring di un tool/plugin vedi il **[README.md](README.md)**.
+Guide for people working **inside** this repo (developers + AI agents). For authoring a tool/plugin see the **[README.md](README.md)**.
 
-## Cos'è
+## What it is
 
-Il **contratto pubblico e STATELESS** per gli autori di plugin Polyant. Espone solo `defineTool` + i tipi che un tool consuma (`ToolSpec`, `ToolDefinition`, `ToolContext`, `RequiredSecretSpec`, `ToolInfo`, `InstanceSlug`, `AuditLogger`, `Attachment`, `ConversationStateApi`, `ToolApiKeys`, …).
+The **public, STATELESS contract** for Polyant plugin authors. It exposes `defineTool` + `defineHook` + the types a tool or hook consumes (`ToolSpec`, `ToolDefinition`, `ToolContext`, `RequiredSecretSpec`, `ToolInfo`, `InstanceSlug`, `AuditLogger`, `Attachment`, `ConversationStateApi`, `ConversationHistoryApi`, `ToolApiKeys`, `HookSpec`, `HookContext`, `HookResult`, …).
 
-Questo pacchetto **NON possiede il registro dei tool** — lo possiede il loader del motore (`polyant-enterprise`). Di conseguenza avere **più copie dell'SDK in giro è innocuo**: ogni plugin risolve la propria copia (e il proprio `zod`, `ai`, …) senza coupling da singleton condiviso.
+This package does **NOT own the tool registry** — that belongs to the engine loader (`polyant-enterprise`). As a result, having **multiple copies of the SDK around is harmless**: each plugin resolves its own copy (and its own `zod`, `ai`, …) with no shared-singleton coupling.
 
-## Principio del confine dati (regola cardine)
+## Data-boundary principle (the cardinal rule)
 
-`defineTool` serializza lo schema `zod` (`parameters`) → JSON Schema **al load del modulo, NEL realm del plugin** (`toJsonSchema` in `src/contract.ts`). Il motore riceve **solo dati** (`inputSchema`, un plain object) più la funzione `execute`.
+`defineTool` serializes the `zod` schema (`parameters`) → JSON Schema **at module load, INSIDE the plugin's realm** (`toJsonSchema` in `src/contract.ts`). The engine receives **only data** (`inputSchema`, a plain object) plus the `execute` function.
 
-- Un oggetto zod **vivo NON deve MAI attraversare il confine** motore↔plugin.
-- **Mai** fare `instanceof` cross-package (fallirebbe: classi diverse da copie diverse dell'SDK/zod).
-- I tipi in `context-types.ts` sono interfacce **strutturali** che mirrorano le forme concrete del motore (`AuditLogger`, `Attachment`, `ConversationStateApi`, `ToolApiKeys`): il brand `InstanceSlug` è solo type-level (phantom field), così gli oggetti concreti del motore soddisfano il contratto **senza importare gli internals**.
+- A **live** zod object **must NEVER cross the** engine↔plugin **boundary**.
+- **Never** do a cross-package `instanceof` (it would fail: different classes from different copies of the SDK/zod).
+- The types in `context-types.ts` are **structural** interfaces that mirror the engine's concrete shapes (`AuditLogger`, `Attachment`, `ConversationStateApi`, `ToolApiKeys`): the `InstanceSlug` brand is type-level only (phantom field), so the engine's concrete objects satisfy the contract **without importing the internals**.
 
-## Regole ferree
+## Ironclad rules
 
-1. **Zero import dagli internals del motore.** L'SDK è autonomo; i tipi condivisi sono ridichiarati strutturalmente in `context-types.ts`.
-2. **Deve restare stateless.** Niente `Map`/registri/singleton/stato di modulo. Solo funzioni pure + tipi.
-3. **Deve shippare buildato.** `main: dist/index.js`, `types: dist/index.d.ts`. Lo script `prepare` builda `dist` così il pacchetto è consumabile come **git-dependency** (npm esegue `prepare` al clone del git ref).
-4. **`Buffer` richiede `@types/node`** (usato in `Attachment.data`) — già in `devDependencies`.
+1. **Zero imports from the engine internals.** The SDK is self-contained; shared types are re-declared structurally in `context-types.ts`.
+2. **Must stay stateless.** No `Map`/registries/singletons/module state. Only pure functions + types.
+3. **Must ship built.** `main: dist/index.js`, `types: dist/index.d.ts`. The `prepare` script builds `dist` so the package is consumable as a **git-dependency** (npm runs `prepare` when cloning the git ref).
+4. **`Buffer` requires `@types/node`** (used in `Attachment.data`) — already in `devDependencies`.
 
-## Come viene consumato
+## How it is consumed
 
-Sia il motore (`polyant-enterprise`) sia i plugin lo referenziano come **git-dependency** con tag:
+Both the engine (`polyant-enterprise`) and the plugins reference it as a **git-dependency** with a tag:
 
 ```
 git+https://github.com/polyant-ai/polyant-sdk.git#<tag>
 ```
-(repo pubblico → clone https senza auth; niente chiavi SSH necessarie)
+(public repo → https clone without auth; no SSH keys needed)
 
-Ognuno risolve la **propria** copia (vedi il principio del confine dati sopra). `zod` è una **peer dependency** — la fornisce il consumer.
+Each one resolves its **own** copy (see the data-boundary principle above). `zod` is a **peer dependency** — provided by the consumer.
 
 ## Versioning
 
-La **versione dell'SDK È il contratto di compatibilità.** Si lega a `plugin.json.engine` (range semver delle versioni motore supportate) tramite la versione del motore.
+The **SDK version IS the compatibility contract.** It binds to `plugin.json.engine` (semver range of supported engine versions) through the engine version.
 
-- Bump semver **deliberati**.
-- **Rompere il contratto dei tool = major bump.**
-- Pubblicare una nuova versione:
-  1. bump di `version` in `package.json`
+- **Deliberate** semver bumps.
+- **Breaking the tool contract = major bump.**
+- Publishing a new version:
+  1. bump `version` in `package.json`
   2. commit
   3. tag `vX.Y.Z`
-  4. push del tag
-  5. i consumer aggiornano il git ref (`#vX.Y.Z`)
+  4. push the tag
+  5. consumers update the git ref (`#vX.Y.Z`)
 
-## Comandi
+## Commands
 
 ```bash
 npm run build       # tsc → dist/ (tsconfig.build.json)
 npm run typecheck   # tsc --noEmit
-npm test            # vitest (7 test sul contratto)
+npm test            # vitest (17 tests: contract 7, context-types 6, hooks 4)
 ```
 
-## Come aggiungere/cambiare il contratto
+## How to add/change the contract
 
-1. Modifica `src/contract.ts` o `src/context-types.ts` (e riesporta da `src/index.ts` se serve).
-2. Aggiorna/aggiungi i test.
+1. Edit `src/contract.ts`, `src/context-types.ts`, or `src/hooks.ts` (and re-export from `src/index.ts` if needed).
+2. Update/add the tests.
 3. `npm test` + `npm run build`.
-4. Bump versione + tag (vedi Versioning) — un cambiamento incompatibile è un major.
+4. Bump version + tag (see Versioning) — an incompatible change is a major.
