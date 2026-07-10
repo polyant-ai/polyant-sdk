@@ -62,6 +62,13 @@ export interface HookContext {
   conversation: ConversationHistoryApi;
   /** Shared per-conversation state — READ + WRITE. */
   state: ConversationStateApi;
+  /**
+   * Decrypted secrets, SCOPED to the keys this hook declared in `requiredSecrets`
+   * (least-privilege, enforced by the engine): a hook only ever sees the secrets it
+   * declared — another integration's credentials are simply absent. Reading an
+   * undeclared key returns `undefined`; to read a secret, declare it in
+   * `requiredSecrets`.
+   */
   secrets: Record<string, string>;
   instance: { slug: string; provider?: string; model?: string; flags: Record<string, boolean> };
   apiKeys?: ToolApiKeys;

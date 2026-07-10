@@ -113,7 +113,10 @@ export interface ToolApiKeys {
 export interface ToolContext {
   /** Instance identifier (slug, not UUID). */
   instanceId: InstanceSlug;
-  /** Per-instance decrypted secrets. */
+  /** Per-instance decrypted secrets, SCOPED to the keys this tool declared in
+   *  `requiredSecrets` (least-privilege, enforced by the engine): a tool only ever
+   *  sees the secrets it declared; undeclared keys are absent. To read a secret,
+   *  declare it in `requiredSecrets`. */
   secrets?: Record<string, string>;
   /** Audit logger scoped to this tool + instance + conversation. */
   audit: AuditLogger;
