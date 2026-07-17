@@ -61,6 +61,20 @@ export function requiredSecretKeys(input: RequiredSecretsInput | undefined): str
   return normalizeRequiredSecrets(input).map((s) => s.key);
 }
 
+/**
+ * The requiredSecrets a tool must declare to use an OAuth `provider` via
+ * `ctx.oauth`: the public client_id (readable) + the client_secret (masked; only
+ * the engine's callback reads it, but declaring it here surfaces its Settings
+ * slot). The key names are the broker contract shared with the engine:
+ * `<provider>_oauth_client_id` / `<provider>_oauth_client_secret`.
+ */
+export function oauthRequiredSecrets(provider: string): RequiredSecretSpec[] {
+  return [
+    { key: `${provider}_oauth_client_id`, type: "text", sensitive: false, label: `${provider} OAuth client id` },
+    { key: `${provider}_oauth_client_secret`, type: "text", sensitive: true, label: `${provider} OAuth client secret` },
+  ];
+}
+
 // ---------------------------------------------------------------------------
 // Tool contract
 // ---------------------------------------------------------------------------
