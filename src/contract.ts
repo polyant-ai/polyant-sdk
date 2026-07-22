@@ -100,6 +100,11 @@ export interface ToolSpec {
   requiredEnv?: string[];
   /** Per-instance config fields (secrets / typed selects). */
   requiredSecrets?: RequiredSecretsInput;
+  /** OAuth providers the caller (principal) must have connected for this tool to
+   *  run. The engine short-circuits with the provider's connect link (via
+   *  ctx.oauth) BEFORE execute when any is missing — so the tool body can assume
+   *  the token is available. Names match the engine's OAuth provider registry. */
+  requiredProviders?: string[];
   /** Harness tools are hidden from the admin UI; equipped only when the supervisor
    * runs with a matching `includeHarness` set. */
   harness?: boolean;
@@ -124,6 +129,9 @@ export interface ToolDefinition {
   category?: string;
   requiredEnv?: string[];
   requiredSecrets: RequiredSecretSpec[];
+  /** OAuth providers the principal must have connected (engine short-circuits with
+   *  the connect link before execute when missing). */
+  requiredProviders?: string[];
   harness?: boolean;
   metaTool?: boolean;
   inputExamples?: ToolInputExample[];
@@ -168,6 +176,7 @@ export function defineTool(spec: ToolSpec): ToolDefinition {
     category: spec.category,
     requiredEnv: spec.requiredEnv,
     requiredSecrets: normalizeRequiredSecrets(spec.requiredSecrets, spec.name),
+    requiredProviders: spec.requiredProviders,
     harness: spec.harness,
     metaTool: spec.metaTool,
     inputExamples: spec.inputExamples,
