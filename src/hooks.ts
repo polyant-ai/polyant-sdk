@@ -32,7 +32,7 @@ export interface HookEventPayload {
   user: { name: string };
   message: { text: string };
   /** Present only on response_generated / response_sent. */
-  response?: { text: string };
+  response?: { text: string; regenerationCount: number };
 }
 
 /** LLM access bound to the instance's configured model, via the engine ai-gateway. */
@@ -93,6 +93,16 @@ export type HookResult =
        * not a static field.
        */
       replaceResponse?: { message: string };
+      /**
+       * On `response_generated`: discard this output and REPLAY the real
+       * supervisor turn (same system prompt + tools). Honored only when the hook
+       * declares `mutatesResponse: true` (same gate/rationale as replaceResponse).
+       * The hook owns the stop condition via `payload.response.regenerationCount`
+       * (0 on the first pass); the engine enforces only a hard safety cap. If a
+       * pass returns both `regenerate` and `replaceResponse`, `regenerate` wins
+       * (the replacement is re-evaluated against the fresh output).
+       */
+      regenerate?: { reason?: string };
       /** Pre-LLM: extra one-shot context appended to this turn's LLM input. */
       injectContext?: string;
     };
