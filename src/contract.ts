@@ -61,6 +61,52 @@ export function requiredSecretKeys(input: RequiredSecretsInput | undefined): str
   return normalizeRequiredSecrets(input).map((s) => s.key);
 }
 
+/**
+ * The requiredSecrets a tool must declare to use an OAuth `provider` via
+ * `ctx.oauth`: the public client_id (readable) + the client_secret (masked; only
+ * the engine's callback reads it, but declaring it here surfaces its Settings
+ * slot). The key names are the broker contract shared with the engine:
+ * `<provider>_oauth_client_id` / `<provider>_oauth_client_secret`.
+ */
+export function oauthRequiredSecrets(provider: string): RequiredSecretSpec[] {
+  return [
+    { key: `${provider}_oauth_client_id`, type: "text", sensitive: false, label: `${provider} OAuth client id` },
+    { key: `${provider}_oauth_client_secret`, type: "text", sensitive: true, label: `${provider} OAuth client secret` },
+  ];
+}
+
+/**
+ * Shape of one entry in a plugin manifest's `oauthProviders` array. A plugin
+ * contributes OAuth providers to the engine's broker registry by declaring them
+ * in its `plugin.json`; the engine validates + registers them at boot, so a
+ * plugin can ship a provider without any engine change. This type mirrors that
+ * manifest contract so authors who generate their manifest programmatically get
+ * type-checking — the manifest itself is plain JSON, so this type is optional
+ * ergonomics, not a runtime dependency.
+ *
+ * `name` is a FLAT, GLOBAL key: it is used verbatim in the per-instance secret
+ * keys (`<name>_oauth_client_id` / `_client_secret`, see {@link
+ * oauthRequiredSecrets}), the token vault, and the callback route
+ * (`/oauth/<name>/callback`). Two plugins may declare the same provider only if
+ * the definitions are identical; a divergent same-name definition fails the
+ * engine boot. Use distinct names (e.g. `google-gmail`) for divergent scopes.
+ */
+export interface OAuthProviderSpec {
+  /** Provider id — the flat global key (secret keys, token vault, callback route). */
+  name: string;
+  /** Provider authorize endpoint. */
+  authorizeUrl: string;
+  /** Provider token endpoint. */
+  tokenUrl: string;
+  /** OAuth scope string requested at authorize time. */
+  scope: string;
+  /** Extra provider-specific authorize query params (e.g. offline access). */
+  extraAuthorizeParams?: Record<string, string>;
+  /** Whether the provider supports PKCE (S256). The engine's state nonce closes
+   *  CSRF regardless; PKCE additionally hardens against code interception. */
+  pkce?: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // Tool contract
 // ---------------------------------------------------------------------------

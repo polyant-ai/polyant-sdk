@@ -105,6 +105,30 @@ export interface ToolApiKeys {
   bedrock_region?: string;
 }
 
+/** Result of {@link OAuthAccessApi.requireToken}: a valid access token, or a
+ *  ready-to-return `action_required` result (the connect link) the tool hands
+ *  straight back to the caller when the user isn't connected. */
+export type OAuthTokenResult =
+  | { ok: true; token: string }
+  | { ok: false; result: Record<string, unknown> };
+
+/**
+ * Tool-facing OAuth accessor exposed as `ctx.oauth`. The engine owns the broker
+ * (provider registry, /oauth/:provider/callback, encrypted per-conversation token
+ * vault, refresh); a tool only asks for a valid token or the connect link — it
+ * never sees the client_secret nor handles the redirect. Declare the provider's
+ * client credentials with {@link oauthRequiredSecrets}. Absent on engines without
+ * OAuth support, so plugins MUST handle undefined.
+ */
+export interface OAuthAccessApi {
+  /** A valid access token for `provider` on this conversation (refreshing an
+   *  expired one), or `{ ok:false, result }` carrying the connect-link result. */
+  requireToken(provider: string): Promise<OAuthTokenResult>;
+  /** The `action_required` connect-link result for `provider` — use it on a 401
+   *  to prompt a reconnect. */
+  connectResult(provider: string): Promise<Record<string, unknown>>;
+}
+
 /**
  * Runtime context passed to every tool's `execute(input, ctx)`.
  * Created by the engine and handed into the plugin's execute — the plugin only
@@ -133,4 +157,7 @@ export interface ToolContext {
   /** Read-only accessor for the recent conversation history.
    *  Absent on engines that don't implement it — plugins MUST handle undefined. */
   conversation?: ConversationHistoryApi;
+  /** Per-conversation OAuth access (tokens brokered + refreshed by the engine).
+   *  Absent on engines without OAuth support — plugins MUST handle undefined. */
+  oauth?: OAuthAccessApi;
 }

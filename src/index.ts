@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-export { defineTool, toJsonSchema, normalizeRequiredSecrets, requiredSecretKeys } from "./contract.js";
+export { defineTool, toJsonSchema, normalizeRequiredSecrets, requiredSecretKeys, oauthRequiredSecrets } from "./contract.js";
 export type {
   ToolSpec,
   ToolDefinition,
@@ -8,6 +8,7 @@ export type {
   ToolInputExample,
   RequiredSecretSpec,
   RequiredSecretsInput,
+  OAuthProviderSpec,
 } from "./contract.js";
 export type {
   InstanceSlug,
@@ -21,6 +22,8 @@ export type {
   RecentMessagesOptions,
   ConversationHistoryApi,
   ToolApiKeys,
+  OAuthTokenResult,
+  OAuthAccessApi,
 } from "./context-types.js";
 export { defineHook } from "./hooks.js";
 export type {
