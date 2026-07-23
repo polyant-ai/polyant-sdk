@@ -75,6 +75,38 @@ export function oauthRequiredSecrets(provider: string): RequiredSecretSpec[] {
   ];
 }
 
+/**
+ * Shape of one entry in a plugin manifest's `oauthProviders` array. A plugin
+ * contributes OAuth providers to the engine's broker registry by declaring them
+ * in its `plugin.json`; the engine validates + registers them at boot, so a
+ * plugin can ship a provider without any engine change. This type mirrors that
+ * manifest contract so authors who generate their manifest programmatically get
+ * type-checking — the manifest itself is plain JSON, so this type is optional
+ * ergonomics, not a runtime dependency.
+ *
+ * `name` is a FLAT, GLOBAL key: it is used verbatim in the per-instance secret
+ * keys (`<name>_oauth_client_id` / `_client_secret`, see {@link
+ * oauthRequiredSecrets}), the token vault, and the callback route
+ * (`/oauth/<name>/callback`). Two plugins may declare the same provider only if
+ * the definitions are identical; a divergent same-name definition fails the
+ * engine boot. Use distinct names (e.g. `google-gmail`) for divergent scopes.
+ */
+export interface OAuthProviderSpec {
+  /** Provider id — the flat global key (secret keys, token vault, callback route). */
+  name: string;
+  /** Provider authorize endpoint. */
+  authorizeUrl: string;
+  /** Provider token endpoint. */
+  tokenUrl: string;
+  /** OAuth scope string requested at authorize time. */
+  scope: string;
+  /** Extra provider-specific authorize query params (e.g. offline access). */
+  extraAuthorizeParams?: Record<string, string>;
+  /** Whether the provider supports PKCE (S256). The engine's state nonce closes
+   *  CSRF regardless; PKCE additionally hardens against code interception. */
+  pkce?: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // Tool contract
 // ---------------------------------------------------------------------------

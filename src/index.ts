@@ -8,6 +8,7 @@ export type {
   ToolInputExample,
   RequiredSecretSpec,
   RequiredSecretsInput,
+  OAuthProviderSpec,
 } from "./contract.js";
 export type {
   InstanceSlug,
