@@ -52,7 +52,7 @@ The **SDK version IS the compatibility contract.** It binds to `plugin.json.engi
 ```bash
 npm run build       # tsc → dist/ (tsconfig.build.json)
 npm run typecheck   # tsc --noEmit
-npm test            # vitest (17 tests: contract 7, context-types 6, hooks 4)
+npm test            # vitest (contract 7, context-types 6, hooks 4, hooks-contract 1)
 ```
 
 ## How to add/change the contract

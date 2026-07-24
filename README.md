@@ -14,7 +14,7 @@ repo, resolve its own dependencies, and be built/bundled independently.
 
 ```bash
 # public git repo — reference by tag (no auth needed)
-npm i -D git+https://github.com/polyant-ai/polyant-sdk.git#v1.2.0
+npm i -D git+https://github.com/polyant-ai/polyant-sdk.git#v1.4.0
 npm i zod              # peer dependency (you author schemas in zod)
 ```
 
@@ -23,7 +23,7 @@ Your plugin's `package.json`:
 ```jsonc
 {
   "peerDependencies": { "@polyant-ai/plugin-sdk": "*" },
-  "devDependencies":  { "@polyant-ai/plugin-sdk": "git+https://github.com/polyant-ai/polyant-sdk.git#v1.2.0" },
+  "devDependencies":  { "@polyant-ai/plugin-sdk": "git+https://github.com/polyant-ai/polyant-sdk.git#v1.4.0" },
   "dependencies":     { "zod": "^3.23.0" /* + any lib your tools call */ }
 }
 ```
@@ -68,6 +68,52 @@ inside it and return `{ error: "..." }` rather than throwing.
 - No `.transform()` / `.refine()` / `.preprocess()` in the schema — move that logic to `execute`.
 - Avoid `.url()`/`.email()`/`.uuid()`/`.datetime()` formats — validate strings in `execute`.
 - `z.record(z.string(), z.string())` is fine; `z.record(z.unknown())` is not.
+
+## Authoring a hook
+
+A hook file is `hooks/<name>.hook.ts` and **default-exports** a `defineHook(...)`.
+Unlike a tool, a hook is **deterministic lifecycle code** — never LLM-invoked,
+never in the tool catalog. It runs at one of four conversation events
+(`conversation_start`, `message_received`, `response_generated`, `response_sent`)
+and may return a typed control object to influence the turn.
+
+```ts
+import { defineHook } from "@polyant-ai/plugin-sdk";
+
+export default defineHook({
+  name: "dirty-output-guard",
+  description: "Replay the turn when the model emits corrupted output.",
+  mutatesResponse: true,                 // required to return replaceResponse / regenerate
+  handler: (ctx) => {
+    const { text, regenerationCount } = ctx.payload.response!;   // response_generated only
+    if (!isDirty(text)) return;                                  // void = observe only
+    return regenerationCount < 2
+      ? { regenerate: { reason: "corrupted output" } }           // re-run the whole turn
+      : { replaceResponse: { message: "Sorry, please try again." } };
+  },
+});
+```
+
+### `HookResult` — how a hook influences a turn
+
+| Return | Event | Effect |
+|--------|-------|--------|
+| `void` | any | observe only (default) |
+| `{ halt: { message } }` | pre-LLM (`conversation_start`, `message_received`) | skip the LLM, reply with `message` |
+| `{ injectContext: string }` | pre-LLM | append a one-shot system message to the turn's LLM input |
+| `{ replaceResponse: { message } }` | `response_generated` | replace the LLM reply with `message` |
+| `{ regenerate: { reason? } }` | `response_generated` | **discard the output and REPLAY the whole turn** (system prompt + tools) — since v1.4.0 |
+
+`replaceResponse` and `regenerate` require the hook to declare
+`mutatesResponse: true` (the engine then serves that turn non-streamed so the
+mutation lands in time). For `regenerate`, the hook owns the stop condition via
+`ctx.payload.response.regenerationCount` (`0` on the first pass); the engine
+enforces a hard safety cap. If a pass returns both, `regenerate` wins.
+**Caveat:** replay re-executes the whole turn, **tools included** — enable a
+`regenerate` hook only where the turn is side-effect-free or its tools are
+idempotent, and note that deterministic (`temperature: 0`) turns reproduce the
+same output and merely exhaust the cap (it suits sporadic output corruption, not
+systematic errors).
 
 ## `plugin.json` (at your repo root)
 
