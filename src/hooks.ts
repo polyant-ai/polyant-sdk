@@ -81,8 +81,18 @@ export interface HookContext {
 export type HookResult =
   | void
   | {
-      /** Pre-LLM (conversation_start, message_received): skip the LLM, reply with this. */
-      halt?: { message: string };
+      /**
+       * Pre-LLM (conversation_start, message_received): skip the LLM, reply with this.
+       *
+       * `persist` (default `true`) controls whether the halted turn is persisted at all.
+       * With `false` the engine delivers the message but writes no user/assistant rows,
+       * no latency trace, no conversation-state flush and no summary/memory work — the
+       * turn is ephemeral, while the hook execution is still recorded. Use it for
+       * command-style hooks (`RESET`, `/help`) whose exchange must stay out of the
+       * model's history. Honored on the conversational path; the supervise-direct
+       * Room/Webhook engines ignore it.
+       */
+      halt?: { message: string; persist?: boolean };
       /**
        * On `response_generated`: replace the LLM reply with this. The engine only
        * honors it when the hook declares `mutatesResponse: true` (which makes the

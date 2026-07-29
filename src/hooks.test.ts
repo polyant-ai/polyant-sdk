@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, it, expect } from "vitest";
-import { defineHook } from "./hooks.js";
+import { defineHook, type HookResult } from "./hooks.js";
 
 describe("defineHook", () => {
   it("returns the definition with the handler + flags carried through", () => {
@@ -39,5 +39,14 @@ describe("defineHook", () => {
     expect(await noop.handler({} as never)).toBeUndefined();
     expect(await replace.handler({} as never)).toEqual({ replaceResponse: { message: "x" } });
     expect(await inject.handler({} as never)).toEqual({ injectContext: "ctx" });
+  });
+
+  it("a halt may opt out of persistence", async () => {
+    // Annotated so the compiler enforces `persist` is part of the contract: an object
+    // literal returned from a handler is inference-position and escapes excess-property
+    // checking, so only an explicit HookResult annotation guards the field.
+    const halt: HookResult = { halt: { message: "RESET", persist: false } };
+    const reset = defineHook({ name: "reset", description: "d", handler: () => halt });
+    expect(await reset.handler({} as never)).toEqual({ halt: { message: "RESET", persist: false } });
   });
 });
