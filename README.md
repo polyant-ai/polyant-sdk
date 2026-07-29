@@ -99,7 +99,7 @@ export default defineHook({
 | Return | Event | Effect |
 |--------|-------|--------|
 | `void` | any | observe only (default) |
-| `{ halt: { message } }` | pre-LLM (`conversation_start`, `message_received`) | skip the LLM, reply with `message` |
+| `{ halt: { message, persist? } }` | pre-LLM (`conversation_start`, `message_received`) | skip the LLM, reply with `message`. `persist: false` (since v1.5.0) also makes the turn ephemeral — no message rows, trace, state flush or summary/memory work — for command-style hooks whose exchange must stay out of the model's history |
 | `{ injectContext: string }` | pre-LLM | append a one-shot system message to the turn's LLM input |
 | `{ replaceResponse: { message } }` | `response_generated` | replace the LLM reply with `message` |
 | `{ regenerate: { reason? } }` | `response_generated` | **discard the output and REPLAY the whole turn** (system prompt + tools) — since v1.4.0 |
