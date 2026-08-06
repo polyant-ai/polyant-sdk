@@ -45,7 +45,7 @@ export default defineTool({
     patientId: z.string(),
     date: z.string().describe("ISO 8601"),
   }),
-  execute: async (input, ctx) => {      // ctx: instanceId, secrets, audit, state, apiKeys…
+  execute: async (input, ctx) => {      // ctx: agentId, secrets, audit, state, apiKeys…
     const key = ctx.secrets?.crm_api_key;
     // ... call your API, use ctx.audit / ctx.state ...
     return { status: "booked", id: "..." };
@@ -142,7 +142,7 @@ systematic errors).
 - `toJsonSchema(zodSchema)` — the zod→JSON-Schema conversion `defineTool` uses.
 - `normalizeRequiredSecrets`, `requiredSecretKeys` — helpers for the secrets contract.
 - Tool types: `ToolSpec`, `ToolDefinition`, `ToolInfo`, `ToolInputExample`, `RequiredSecretSpec`, `RequiredSecretsInput`.
-- Context types: `ToolContext`, `InstanceSlug`, `AuditLogger`, `Attachment`, `ChannelStateIdentity`, `ConversationStateApi`, `ConversationHistoryApi`, `ConversationMessage`, `ConversationRole`, `RecentMessagesOptions`, `ToolApiKeys`.
+- Context types: `ToolContext`, `AgentSlug`, `AuditLogger`, `Attachment`, `ChannelStateIdentity`, `ConversationStateApi`, `ConversationHistoryApi`, `ConversationMessage`, `ConversationRole`, `RecentMessagesOptions`, `ToolApiKeys`.
 - Hook types: `HookSpec`, `HookFunctionDefinition`, `HookContext`, `HookResult`, `HookEvent`, `HookEventPayload`, `HookAi`.
 
 ## Versioning
@@ -151,6 +151,23 @@ This package's version **is** the plugin compatibility contract. It is reference
 by `plugin.json.engine` (via the engine version) and consumed by both the engine
 and every plugin. Bump deliberately (semver); breaking the tool contract is a
 major bump.
+
+### 1.6.0 — agent terminology
+
+Polyant renamed its core domain entity from *instance* to *agent*, so the contract
+follows. The rename is **additive** — nothing you already shipped breaks:
+
+| Before | Now | Old name |
+|---|---|---|
+| `InstanceSlug` | `AgentSlug` | deprecated alias, identical type |
+| `ctx.instanceId` | `ctx.agentId` | deprecated, engine sets both |
+| `payload.instance` / `ctx.instance` (hooks) | `payload.agent` / `ctx.agent` | deprecated, engine sets both |
+
+A tool or hook built against ≤ 1.5.0 keeps compiling and keeps reading its old
+field. The brand payload literal is intentionally unchanged, which is what makes
+`AgentSlug` and `InstanceSlug` the same type in both directions. The deprecated
+names are removed in the next major — migrate at your convenience. If you build a
+`ToolContext` by hand (usually in tests), add `agentId` next to `instanceId`.
 
 ## License
 

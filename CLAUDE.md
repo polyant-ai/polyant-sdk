@@ -4,7 +4,7 @@ Guide for people working **inside** this repo (developers + AI agents). For auth
 
 ## What it is
 
-The **public, STATELESS contract** for Polyant plugin authors. It exposes `defineTool` + `defineHook` + the types a tool or hook consumes (`ToolSpec`, `ToolDefinition`, `ToolContext`, `RequiredSecretSpec`, `ToolInfo`, `InstanceSlug`, `AuditLogger`, `Attachment`, `ConversationStateApi`, `ConversationHistoryApi`, `ToolApiKeys`, `HookSpec`, `HookContext`, `HookResult`, …).
+The **public, STATELESS contract** for Polyant plugin authors. It exposes `defineTool` + `defineHook` + the types a tool or hook consumes (`ToolSpec`, `ToolDefinition`, `ToolContext`, `RequiredSecretSpec`, `ToolInfo`, `AgentSlug`, `AuditLogger`, `Attachment`, `ConversationStateApi`, `ConversationHistoryApi`, `ToolApiKeys`, `HookSpec`, `HookContext`, `HookResult`, …).
 
 This package does **NOT own the tool registry** — that belongs to the engine loader (`polyant-enterprise`). As a result, having **multiple copies of the SDK around is harmless**: each plugin resolves its own copy (and its own `zod`, `ai`, …) with no shared-singleton coupling.
 
@@ -14,7 +14,7 @@ This package does **NOT own the tool registry** — that belongs to the engine l
 
 - A **live** zod object **must NEVER cross the** engine↔plugin **boundary**.
 - **Never** do a cross-package `instanceof` (it would fail: different classes from different copies of the SDK/zod).
-- The types in `context-types.ts` are **structural** interfaces that mirror the engine's concrete shapes (`AuditLogger`, `Attachment`, `ConversationStateApi`, `ToolApiKeys`): the `InstanceSlug` brand is type-level only (phantom field), so the engine's concrete objects satisfy the contract **without importing the internals**.
+- The types in `context-types.ts` are **structural** interfaces that mirror the engine's concrete shapes (`AuditLogger`, `Attachment`, `ConversationStateApi`, `ToolApiKeys`): the `AgentSlug` brand is type-level only (phantom field), so the engine's concrete objects satisfy the contract **without importing the internals**.
 
 ## Ironclad rules
 

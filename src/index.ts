@@ -11,6 +11,8 @@ export type {
   OAuthProviderSpec,
 } from "./contract.js";
 export type {
+  AgentSlug,
+  /** @deprecated alias of AgentSlug */
   InstanceSlug,
   ToolContext,
   AuditLogger,

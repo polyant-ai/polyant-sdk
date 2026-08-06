@@ -9,13 +9,22 @@
  * and `ChatRequest["apiKeys"]` structurally satisfy these types.
  */
 
-/** Human-readable instance identifier (the `instances.slug` column).
+/** Human-readable agent identifier (the `agents.slug` column).
  *
  * Brand is type-level only (a phantom field, never present at runtime), so this
- * is structurally identical to the engine's `InstanceSlug` — the engine's
+ * is structurally identical to the engine's `AgentSlug` — the engine's
  * concrete `ToolContext` objects satisfy this contract without importing engine
- * internals. */
-export type InstanceSlug = string & { readonly __brand: "InstanceSlug" };
+ * internals.
+ *
+ * The brand PAYLOAD is still the literal `"InstanceSlug"` on purpose: brands are
+ * nominal on that string, so keeping it makes {@link AgentSlug} and the
+ * deprecated {@link InstanceSlug} the SAME type — a plugin built against 1.5.0
+ * and one built against 1.6.0 interoperate. The payload changes only in a major. */
+export type AgentSlug = string & { readonly __brand: "InstanceSlug" };
+
+/** @deprecated Renamed to {@link AgentSlug} in 1.6.0, when the core domain entity
+ * became "agent". This alias is the identical type and stays for the 1.x line. */
+export type InstanceSlug = AgentSlug;
 
 /** Tool-facing audit API (mirrors engine `audit/audit-logger.ts` AuditLogger). */
 export interface AuditLogger {
@@ -135,8 +144,12 @@ export interface OAuthAccessApi {
  * reads/calls its members, so nothing here requires shared runtime identity.
  */
 export interface ToolContext {
-  /** Instance identifier (slug, not UUID). */
-  instanceId: InstanceSlug;
+  /** Agent identifier (slug, not UUID). */
+  agentId: AgentSlug;
+  /** @deprecated Renamed to {@link ToolContext.agentId} in 1.6.0. The engine sets
+   * BOTH fields to the same value, so a tool built against <= 1.5.0 keeps reading
+   * `ctx.instanceId` unchanged. Removed in the next major. */
+  instanceId: AgentSlug;
   /** Per-instance decrypted secrets, SCOPED to the keys this tool declared in
    *  `requiredSecrets` (least-privilege, enforced by the engine): a tool only ever
    *  sees the secrets it declared; undeclared keys are absent. To read a secret,
