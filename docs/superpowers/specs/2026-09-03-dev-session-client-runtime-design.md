@@ -103,6 +103,19 @@ function defaultWebSocketFactory(): DevWebSocketFactory;
 - **The first connection's failure is the caller's failure.** `serveDevSession` rejects instead of
   retrying in the background — a CLI must be able to say "wrong token" and exit non-zero. Failures
   after that arrive as events.
+- **The reconnection timer is ref'd, and that is part of the contract.** A session is alive until
+  it is closed, so while a reconnection is pending the runtime keeps the event loop occupied: a
+  process whose only job is serving the session survives an engine restart instead of exiting 0 the
+  moment it announced `willReconnect`. It was `unref()`-ed at first, and the cost landed on the
+  consumer — the CLI had to hold the process up with a ref'd timer of its own, compensating from
+  outside for a decision taken in here that nothing in the API mentioned.
+  **No `keepProcessAlive` option was added.** The opposite case (an embedder that must not be held
+  alive) already has two honest answers, and both say what they mean: `close()` ends the session,
+  and `reconnect: false` arms no timer at all. A boolean that lets a process die *while a
+  reconnection is pending* would re-introduce exactly the defect above, opt-in, and would give the
+  API two ways to say "I no longer want this session". The stale-connection watchdog stays
+  unref'd, deliberately: it is armed only while a socket exists, and an open socket already holds
+  the loop.
 - **A stale-connection watchdog, not just `close`.** A TCP connection dropped without a FIN emits no
   `close` event, so the session would sit believing it is connected. Any frame rearms a 60s timer
   (the engine pings every 20s); on expiry the socket is closed, which routes into the single
@@ -140,15 +153,18 @@ function defaultWebSocketFactory(): DevWebSocketFactory;
 
 ## Testing
 
-34 tests over five files, all driving the runtime through an injected in-memory socket
+36 tests over five files, all driving the runtime through an injected in-memory socket
 (`fake-socket.test-fixture.ts`, excluded from the build):
 
-- `session.test.ts` (13) — handshake frame shape, `hello.error` with no retry, duplicate names,
+- `session.test.ts` (15) — handshake frame shape, `hello.error` with no retry, duplicate names,
   invocation with state/audit write-back, a thrown tool error as a result with **no** writes, an
   unserved tool name, ctx RPC correlated to the in-flight `callId` (and a failed one surfacing as a
   rejection), abort discarding the result and rejecting pending RPCs, `ping`→`pong`, reconnection
   re-declaring the current set, `reconnect: false`, idempotent `close`, and `tools.update` hot
-  reload serving the new implementation.
+  reload serving the new implementation. Two of them pin the process-lifetime property on the
+  timer's `ref` instead of on elapsed time — `hasRef()` is Node's own answer to "would this keep
+  the process alive?" — so nothing waits on a real 60s delay and no test can hang on one; restoring
+  the `unref()` makes the first of the two fail.
 - `protocol.test.ts` (7) — the version constant, the ctx-op list, Zod defaults, the 64KB
   `inputSchema` cap, round-trips, and that `parseServerFrame` never throws.
 - `ctx-proxy.test.ts` (7) — synchronous reads/writes, ordering, buffer copies, inline fields, the

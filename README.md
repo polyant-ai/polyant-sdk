@@ -181,6 +181,10 @@ Three things to know before using it:
   package takes no new runtime dependency for it. On Node 20/21, inject one:
   `webSocketImpl: (url) => new WS(url)` with `ws`. The same seam is how you test a
   session with no network.
+- **A pending reconnection keeps your process alive.** The session is alive until you close
+  it, so after a dropped connection the runtime holds the event loop while it retries —
+  `session.close()` is what lets the process end, and `reconnect: false` arms no retry at
+  all.
 - `ctx.state` is **synchronous**, exactly as in-process: reads are served from the
   snapshot that came with the invocation, and your writes are returned with the result so
   the engine applies them only when the call succeeds.

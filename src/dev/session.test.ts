@@ -328,6 +328,101 @@ describe("serveDevSession — abort, ping, reconnection", () => {
     handle.close();
   });
 
+  it("keeps the event loop alive while a reconnection is pending, until close()", async () => {
+    // The observable property, asserted on the timer's `ref` rather than on
+    // elapsed time: an unref'd timer here let a process whose only job is
+    // serving the session exit 0 the moment it announced `willReconnect`.
+    const created: ReturnType<typeof setTimeout>[] = [];
+    const realSetTimeout = globalThis.setTimeout;
+    const spy = vi
+      .spyOn(globalThis, "setTimeout")
+      .mockImplementation(((fn: () => void, ms?: number) => {
+        const timer = realSetTimeout(fn, ms);
+        created.push(timer);
+        return timer;
+      }) as unknown as typeof setTimeout);
+
+    try {
+      const sockets: FakeDevSocket[] = [];
+      const promise = serveDevSession({
+        agentSlug: "acme-bot",
+        token: "tok_live",
+        url: "ws://engine.test",
+        tools: [echoTool()],
+        // Long enough that the timer is still pending when we look at it, so
+        // the test never waits on it and can never hang on it.
+        reconnect: { initialDelayMs: 60_000 },
+        webSocketImpl: () => {
+          const next = new FakeDevSocket();
+          sockets.push(next);
+          return next;
+        },
+      });
+      await new Promise((r) => realSetTimeout(r, 0));
+      sockets[0].open();
+      await new Promise((r) => realSetTimeout(r, 0));
+      sockets[0].deliver({
+        type: "hello.ok", sessionId: "s1", engineVersion: "1.0.0",
+        protocolVersion: DEV_PROTOCOL_VERSION, warnings: [],
+      });
+      const handle = await promise;
+
+      created.length = 0;
+      sockets[0].close(1006, "engine restarted");
+
+      // The reconnection timer is the last one armed by the drop, and it holds
+      // the loop: `hasRef()` is Node's own answer to "would this keep the
+      // process alive?".
+      const reconnectTimer = created.at(-1);
+      expect(reconnectTimer).toBeDefined();
+      expect(typeof reconnectTimer?.hasRef).toBe("function");
+      expect(reconnectTimer?.hasRef()).toBe(true);
+
+      // ...and closing the session is what gives the loop back.
+      handle.close();
+      expect(sockets).toHaveLength(1); // no reconnection was attempted after close
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("arms no reconnection timer at all when reconnect is disabled", async () => {
+    const created: ReturnType<typeof setTimeout>[] = [];
+    const realSetTimeout = globalThis.setTimeout;
+    const spy = vi
+      .spyOn(globalThis, "setTimeout")
+      .mockImplementation(((fn: () => void, ms?: number) => {
+        const timer = realSetTimeout(fn, ms);
+        created.push(timer);
+        return timer;
+      }) as unknown as typeof setTimeout);
+
+    try {
+      const socket = new FakeDevSocket();
+      const promise = serveDevSession({
+        agentSlug: "a", token: "t", url: "ws://engine.test", tools: [echoTool()],
+        reconnect: false, webSocketImpl: () => socket,
+      });
+      await new Promise((r) => realSetTimeout(r, 0));
+      socket.open();
+      await new Promise((r) => realSetTimeout(r, 0));
+      socket.deliver({
+        type: "hello.ok", sessionId: "s1", engineVersion: "1.0.0",
+        protocolVersion: DEV_PROTOCOL_VERSION, warnings: [],
+      });
+      const handle = await promise;
+
+      created.length = 0;
+      socket.close(1006, "gone");
+      // `reconnect: false` is the documented way out for an embedder that must
+      // not be held alive: nothing is armed, so there is nothing to unref.
+      expect(created).toHaveLength(0);
+      handle.close();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it("does not reconnect when reconnect is disabled, and close() is idempotent", async () => {
     const events: DevSessionEvent[] = [];
     const socket = new FakeDevSocket();

@@ -52,6 +52,15 @@ export interface ServeDevSessionOptions {
   tools: readonly ToolDefinition[];
   webSocketImpl?: DevWebSocketFactory;
   onEvent?: DevSessionEventHandler;
+  /**
+   * Reconnection policy, or `false` for a single connection.
+   *
+   * NOTE ON PROCESS LIFETIME: while a reconnection is pending its timer is
+   * REF'D, so a process whose only job is serving this session stays alive
+   * across an engine restart instead of exiting 0. To let such a process end,
+   * call {@link DevSessionHandle.close} — or pass `false` here, which arms no
+   * timer at all.
+   */
   reconnect?: false | DevReconnectOptions;
   /**
    * Treat the connection as dead when no frame arrives for this long. The engine
@@ -300,7 +309,14 @@ class DevSessionRuntime implements DevSessionHandle {
         this.scheduleReconnect(this.nextDelay());
       });
     }, delayMs);
-    if (typeof this.reconnectTimer === "object" && "unref" in this.reconnectTimer) this.reconnectTimer.unref();
+    // DELIBERATELY REF'D. A session is alive until it is closed, so while a
+    // reconnection is pending this timer is the only thing left holding the
+    // event loop: `unref()`-ing it made a process whose whole job is serving
+    // the session exit 0 the instant it announced `willReconnect`, and forced
+    // whoever embeds the runtime to keep the process alive with a ref'd timer
+    // of their own — compensating from outside for a decision taken in here,
+    // with nothing in the API saying so. `close()` (or `reconnect: false`) is
+    // the way to let a process end; a pending reconnection is not.
   }
 
   /** Restarts the dead-connection watchdog on every frame. */
@@ -318,6 +334,10 @@ class DevSessionRuntime implements DevSessionHandle {
         /* already closed */
       }
     }, this.staleAfterMs);
+    // Unref'd, unlike the reconnection timer: this one is armed only while a
+    // socket exists, and an open socket already holds the event loop, so
+    // ref'ing it would add nothing and would keep a process alive for the
+    // watchdog of a connection that is itself keeping it alive.
     if (typeof this.staleTimer === "object" && "unref" in this.staleTimer) this.staleTimer.unref();
   }
 
