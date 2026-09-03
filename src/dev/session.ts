@@ -8,7 +8,9 @@
  * Everything the engine documents as its side of the contract is honoured here:
  * `hello` first, `pong` for every `ping`, `stateWrites`/`auditEntries` returned
  * WITH the result (so the engine applies them only on success), ctx RPCs
- * correlated by the in-flight `callId`, and a refused handshake never retried.
+ * correlated by the in-flight `callId`, a refused handshake never retried, and
+ * a `tools.update` treated as pending — not adopted — until the engine's
+ * `tools.update.result` (or a fresh `hello.ok` on reconnect) confirms it.
  */
 
 import { randomUUID } from "node:crypto";
@@ -76,7 +78,12 @@ export interface DevSessionHandle {
   /** Session id from the most recent successful handshake. */
   readonly sessionId: string;
   readonly agentSlug: string;
-  /** Declaration warnings from the most recent handshake (strict-mode lint et al.). */
+  /**
+   * Declaration warnings from the most recent handshake or ADOPTED hot reload
+   * (strict-mode lint et al.). A REJECTED `updateTools` leaves this untouched:
+   * the previous declarations are still what is served, so their warnings are
+   * still the accurate ones — the lint does not even run on a rejected set.
+   */
   readonly warnings: readonly string[];
   readonly engineVersion: string;
   readonly connected: boolean;
@@ -129,6 +136,17 @@ interface PendingRpc {
   reject(err: Error): void;
 }
 
+/**
+ * A `tools.update` that was sent but not yet confirmed. Queued (not a single
+ * slot) because the wire carries no correlation id for this frame — the
+ * engine answers in the order it received them, over one ordered socket, so
+ * FIFO is the only correlation there is.
+ */
+interface PendingToolUpdate {
+  readonly tools: Map<string, ToolDefinition>;
+  readonly declarations: DevToolDeclaration[];
+}
+
 const DEFAULT_RECONNECT: Required<DevReconnectOptions> = {
   initialDelayMs: 500,
   maxDelayMs: 15_000,
@@ -160,6 +178,8 @@ class DevSessionRuntime implements DevSessionHandle {
   private staleTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly inFlight = new Map<string, InFlightCall>();
   private readonly pendingRpcs = new Map<string, PendingRpc>();
+  /** `tools.update`s sent, awaiting `tools.update.result`. FIFO — see {@link PendingToolUpdate}. */
+  private readonly pendingToolUpdates: PendingToolUpdate[] = [];
 
   constructor(opts: ServeDevSessionOptions) {
     this.agentSlug = opts.agentSlug;
@@ -185,11 +205,31 @@ class DevSessionRuntime implements DevSessionHandle {
     await this.connectOnce();
   }
 
+  /**
+   * Replace the served set. While connected, this is NOT applied locally on
+   * the spot: the engine now validates a reload exactly like a handshake
+   * (duplicate names after sanitization, strict-mode lint, ajv compilability),
+   * and can REJECT it — in which case the engine keeps serving the previous
+   * declarations, and this runtime must too. So `tools`/`declarations` are
+   * only swapped once `tools.update.result` (or a fresh `hello.ok` after a
+   * reconnect) confirms them; sending the frame is never itself "success".
+   *
+   * While disconnected there is no live session to confirm against, so the
+   * new set is applied immediately — the next `hello` IS the confirmation
+   * point for it (`hello.ok`/`hello.error`), same as the very first connect.
+   */
   updateTools(tools: readonly ToolDefinition[]): void {
-    this.tools = indexTools(tools);
-    this.declarations = toDeclarations(tools);
-    this.emit({ type: "tools_updated", tools: [...this.tools.keys()] });
-    if (this.connected) this.send({ type: "tools.update", tools: this.declarations });
+    const indexed = indexTools(tools);
+    const declarations = toDeclarations(tools);
+    if (!this.connected) {
+      this.pendingToolUpdates.length = 0;
+      this.tools = indexed;
+      this.declarations = declarations;
+      this.emit({ type: "tools_updated", tools: [...indexed.keys()], warnings: [] });
+      return;
+    }
+    this.pendingToolUpdates.push({ tools: indexed, declarations });
+    this.send({ type: "tools.update", tools: declarations });
   }
 
   close(reason = "closed by the local runtime"): void {
@@ -198,6 +238,7 @@ class DevSessionRuntime implements DevSessionHandle {
     this.clearTimers();
     this.failAllPendingRpcs(`dev session closed: ${reason}`);
     this.inFlight.clear();
+    this.pendingToolUpdates.length = 0;
     this.handshaken = false;
     const socket = this.socket;
     this.socket = null;
@@ -269,6 +310,12 @@ class DevSessionRuntime implements DevSessionHandle {
         const reason = event.reason || "connection closed";
         this.failAllPendingRpcs(`dev session disconnected: ${reason}`);
         this.inFlight.clear();
+        // Any in-flight `tools.update` will never be confirmed on THIS
+        // session — dropped, not promoted: `tools`/`declarations` stay
+        // whatever was last CONFIRMED, per the same rule `updateTools`
+        // follows. A reconnect re-declares that confirmed set, and the fresh
+        // `hello.ok` is what confirms it again.
+        this.pendingToolUpdates.length = 0;
         if (this.stopped) return;
         if (!wasHandshaken) {
           // Closed before `hello.ok`: either the engine refused us (already
@@ -410,6 +457,28 @@ class DevSessionRuntime implements DevSessionHandle {
         this.pendingRpcs.delete(frame.rpcId);
         if (frame.ok) pending.resolve(frame.value);
         else pending.reject(new Error(frame.error ?? "ctx operation failed"));
+        return;
+      }
+      case "tools.update.result": {
+        // No correlation id on this frame: FIFO over one ordered socket.
+        const pending = this.pendingToolUpdates.shift();
+        if (!pending) return; // no `tools.update` of ours is outstanding — ignore defensively
+        if (frame.ok) {
+          this.tools = pending.tools;
+          this.declarations = pending.declarations;
+          this.warnings = frame.warnings;
+          this.emit({ type: "tools_updated", tools: [...this.tools.keys()], warnings: frame.warnings });
+        } else {
+          // REJECTED: `this.tools`/`this.declarations` are already the
+          // previous, still-served set — untouched here, deliberately. The
+          // event says so explicitly so a dev who just saved a file does not
+          // read a bare warning and assume the new code is live.
+          this.emit({
+            type: "tools_update_rejected",
+            reason: frame.reason ?? "the engine rejected the update",
+            tools: [...this.tools.keys()],
+          });
+        }
         return;
       }
       default:

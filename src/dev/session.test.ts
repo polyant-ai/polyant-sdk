@@ -447,25 +447,118 @@ describe("serveDevSession — abort, ping, reconnection", () => {
 });
 
 describe("serveDevSession — hot reload", () => {
-  it("sends tools.update and serves the new set", async () => {
-    const events: DevSessionEvent[] = [];
-    const { handle, socket } = await connect({ tools: [echoTool()], events });
-
-    const replacement = defineTool({
+  function louderEcho(): ToolDefinition {
+    return defineTool({
       name: "echo",
       description: "echoes, louder",
       parameters: z.object({ text: z.string() }),
       execute: async (input: { text: string }) => ({ echoed: input.text.toUpperCase() }),
     });
-    handle.updateTools([replacement]);
+  }
 
+  it("sends tools.update, then serves the new set once the engine confirms it", async () => {
+    const events: DevSessionEvent[] = [];
+    const { handle, socket } = await connect({ tools: [echoTool()], events });
+
+    handle.updateTools([louderEcho()]);
     expect(socket.framesOf("tools.update")[0]).toMatchObject({
       tools: [{ name: "echo", description: "echoes, louder", requiredSecrets: [] }],
     });
+
+    // Not yet confirmed: an invocation that arrives now must still be served
+    // by the OLD implementation — sending the frame is not itself "success".
+    socket.deliver({ type: "tool.invoke", callId: "c6", tool: "echo", input: { text: "hi" }, ctx: inlineCtx() });
+    await tick();
+    expect(socket.framesOf("tool.result")[0]).toMatchObject({ result: { echoed: { text: "hi" } } });
+    expect(events.find((e) => e.type === "tools_updated")).toBeUndefined();
+
+    socket.deliver({ type: "tools.update.result", ok: true, warnings: ["tool \"echo\": heads up"] });
+    await tick();
+    expect(events.find((e) => e.type === "tools_updated")).toMatchObject({
+      tools: ["echo"],
+      warnings: ['tool "echo": heads up'],
+    });
+    expect(handle.warnings).toEqual(['tool "echo": heads up']);
+
     socket.deliver({ type: "tool.invoke", callId: "c7", tool: "echo", input: { text: "hi" }, ctx: inlineCtx() });
     await tick();
-    expect(socket.framesOf("tool.result")[0]).toMatchObject({ result: { echoed: "HI" } });
-    expect(events.find((e) => e.type === "tools_updated")).toMatchObject({ tools: ["echo"] });
+    expect(socket.framesOf("tool.result")[1]).toMatchObject({ result: { echoed: "HI" } });
+    handle.close();
+  });
+
+  it("keeps serving the previous declarations when the engine rejects the update", async () => {
+    const events: DevSessionEvent[] = [];
+    const { handle, socket } = await connect({ tools: [echoTool()], events });
+
+    handle.updateTools([louderEcho()]);
+    socket.deliver({
+      type: "tools.update.result",
+      ok: false,
+      warnings: [],
+      reason: "duplicate tool name after sanitization",
+    });
+    await tick();
+
+    expect(events.find((e) => e.type === "tools_updated")).toBeUndefined();
+    expect(events.find((e) => e.type === "tools_update_rejected")).toMatchObject({
+      reason: "duplicate tool name after sanitization",
+      tools: ["echo"],
+    });
+    // The handshake's warnings are untouched — the served declarations did
+    // not change, so their lint result is still accurate.
+    expect(handle.warnings).toEqual(['tool "echo": heads up']);
+
+    // Still the ORIGINAL implementation, never the rejected one:
+    socket.deliver({ type: "tool.invoke", callId: "c8", tool: "echo", input: { text: "hi" }, ctx: inlineCtx() });
+    await tick();
+    expect(socket.framesOf("tool.result")[0]).toMatchObject({ result: { echoed: { text: "hi" } } });
+    handle.close();
+  });
+
+  it("does not keep an unconfirmed update alive across a reconnect", async () => {
+    const sockets: FakeDevSocket[] = [];
+    const promise = serveDevSession({
+      agentSlug: "acme-bot",
+      token: "tok_live",
+      url: "ws://engine.test",
+      tools: [echoTool()],
+      reconnect: { initialDelayMs: 1 },
+      webSocketImpl: () => {
+        const next = new FakeDevSocket();
+        sockets.push(next);
+        return next;
+      },
+    });
+    await tick();
+    const first = sockets[0];
+    first.open();
+    await tick();
+    first.deliver({
+      type: "hello.ok", sessionId: "s1", engineVersion: "1.0.0",
+      protocolVersion: DEV_PROTOCOL_VERSION, warnings: [],
+    });
+    const handle = await promise;
+
+    handle.updateTools([louderEcho()]);
+    expect(first.framesOf("tools.update")).toHaveLength(1);
+
+    // The connection dies before `tools.update.result` ever arrives.
+    first.close(1006, "gone");
+    await new Promise((r) => setTimeout(r, 20));
+
+    const second = sockets[1];
+    expect(second).toBeDefined();
+    second.open();
+    await tick();
+
+    // The reconnect re-declares the last CONFIRMED set — still the original
+    // echo, since the reload was never confirmed before the drop.
+    expect(second.framesOf("hello")[0]?.tools).toMatchObject([{ description: "echoes its input" }]);
+    second.deliver({
+      type: "hello.ok", sessionId: "s2", engineVersion: "1.0.0",
+      protocolVersion: DEV_PROTOCOL_VERSION, warnings: [],
+    });
+    await tick();
     handle.close();
   });
 });

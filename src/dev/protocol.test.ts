@@ -63,6 +63,22 @@ describe("dev protocol (client port)", () => {
     expect(missing.ok).toBe(false);
   });
 
+  it("parses tools.update.result — ok with warnings, rejected with a reason", () => {
+    const accepted = serverFrameSchema.safeParse({ type: "tools.update.result", ok: true, warnings: ["heads up"] });
+    expect(accepted).toMatchObject({ success: true, data: { ok: true, warnings: ["heads up"] } });
+
+    const rejected = serverFrameSchema.safeParse({
+      type: "tools.update.result", ok: false, warnings: [], reason: "duplicate name after sanitization",
+    });
+    expect(rejected).toMatchObject({
+      success: true,
+      data: { ok: false, reason: "duplicate name after sanitization" },
+    });
+
+    // `warnings` has no default — the engine always sends it, empty or not.
+    expect(serverFrameSchema.safeParse({ type: "tools.update.result", ok: true }).success).toBe(false);
+  });
+
   it("requires the inline ctx to carry instanceId, secrets and a state snapshot", () => {
     const invoke = {
       type: "tool.invoke", callId: "c", tool: "t", input: {},

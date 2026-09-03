@@ -174,6 +174,27 @@ export const serverFrameSchema = z.discriminatedUnion("type", [
     error: z.string().optional(),
   }),
   z.object({ type: z.literal("ping") }),
+  /**
+   * Answers a `tools.update`. ADDITIVE (no {@link DEV_PROTOCOL_VERSION} bump):
+   * a client that does not know this frame keeps working exactly as before —
+   * `hello` carries its outcome in the initial `hello.ok`, and this frame
+   * carries the same kind of outcome for every reload after that, which
+   * previously went nowhere (the lint warnings landed in a server-side log the
+   * dev never reads, and a rejection was not even possible).
+   *
+   * `ok: false` ⇒ the update was REJECTED (e.g. two names that collide after
+   * sanitization) and the session kept serving the PREVIOUS declarations —
+   * `reason` says why, `warnings` is empty (the lint does not run on a
+   * rejected set).
+   * `ok: true` ⇒ the update was adopted; `warnings` carries the same
+   * strict-mode lint as `hello.ok.warnings` (can be empty).
+   */
+  z.object({
+    type: z.literal("tools.update.result"),
+    ok: z.boolean(),
+    warnings: z.array(z.string()),
+    reason: z.string().optional(),
+  }),
 ]);
 
 export type ServerFrame = z.infer<typeof serverFrameSchema>;

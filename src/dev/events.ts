@@ -17,7 +17,21 @@ export type DevSessionEvent =
   | { type: "result"; callId: string; tool: string; ok: boolean; durationMs: number; error?: string }
   | { type: "aborted"; callId: string; tool: string }
   | { type: "ctx_request"; callId: string; op: CtxOp }
-  | { type: "tools_updated"; tools: readonly string[] }
+  /**
+   * A `tools.update` was ADOPTED — the engine now serves `tools` and is the
+   * only source of truth for that: this fires only once the confirmation
+   * (`tools.update.result` with `ok: true`, or a fresh `hello.ok` after a
+   * reconnect) has arrived, never merely because the frame was sent.
+   * `warnings` is the same strict-mode lint as `connected.warnings`.
+   */
+  | { type: "tools_updated"; tools: readonly string[]; warnings: readonly string[] }
+  /**
+   * A `tools.update` was REJECTED (e.g. two names that collide after
+   * sanitization). The engine kept — and this runtime kept serving — the
+   * PREVIOUS declarations, listed in `tools`: nothing the update attempted to
+   * change is live. `reason` is the engine's explanation.
+   */
+  | { type: "tools_update_rejected"; reason: string; tools: readonly string[] }
   | { type: "disconnected"; code?: number; reason: string; willReconnect: boolean; retryInMs?: number }
   /** A non-fatal fault: an unparseable frame, a send on a dead socket, a listener that threw. */
   | { type: "error"; message: string }

@@ -151,22 +151,77 @@ function defaultWebSocketFactory(): DevWebSocketFactory;
 - **A duplicate tool name fails before a socket is opened.** The engine rejects the whole handshake
   on a duplicate; failing locally names the offending tool.
 
+## Protocol lockstep update — 2026-09-03: `tools.update.result`
+
+`protocol.ts` is a **verbatim port** of the engine's `dev-mode/dev-protocol.ts`
+(`polyant-enterprise`), and that source of truth changed after this design was first written: the
+engine used to run `tools.update` — the frame a hot reload sends on every save — through NONE of
+the handshake's validation (sanitized-name collisions, strict-mode lint, ajv schema
+compilability). It now runs the same validation on a reload as on a `hello`, and:
+
+- a **rejection-class** error (e.g. two names that collide after sanitization) makes the engine
+  **refuse the update and keep the previously equipped declarations** — a hot reload can now fail,
+  where it silently could not before;
+- lint **warnings** come back to the client instead of landing in a server-side log the developer
+  never reads.
+
+The engine reports this over a new, **additive** frame (no `DEV_PROTOCOL_VERSION` bump — an older
+client that does not know it keeps working exactly as before):
+
+```ts
+{
+  type: "tools.update.result";
+  ok: boolean;
+  warnings: string[];   // same lint as hello.ok.warnings; empty when ok is false
+  reason?: string;       // present ONLY when ok is false
+}
+```
+
+Porting it changed more than `protocol.ts`: `session.ts`'s `updateTools` used to treat *sending*
+`tools.update` as success — it swapped `this.tools`/`this.declarations` on the spot, so a rejected
+reload (impossible before, now possible) would have left the runtime silently believing it was
+serving code the engine had refused. It is now genuinely asynchronous:
+
+- while connected, `updateTools` queues the attempt (`pendingToolUpdates`, FIFO — the frame carries
+  no correlation id, so ordered delivery over one socket is the only correlation there is) and only
+  commits `tools`/`declarations` when `tools.update.result` answers `ok: true`;
+- `ok: false` leaves `tools`/`declarations` untouched — they are already the previous, still-served
+  set — and is reported through a DISTINCT event (`tools_update_rejected`, carrying `reason`) rather
+  than folding a failure into the success event, so a developer who saves a file and sees only a
+  warning cannot mistake it for the new code being live — the exact class of confusion the engine
+  side closed this frame to fix;
+- while disconnected there is no live session to confirm against, so the new set is applied
+  immediately, exactly as before — the *next* `hello` is that update's confirmation point
+  (`hello.ok`/`hello.error`), same as the very first connect;
+- a connection that drops with an update still pending discards it (does not promote it) — the
+  reconnect re-declares the last **confirmed** set, and the fresh `hello.ok` confirms it again.
+
+**The lockstep rule, restated for this change and the next one:** `packages/engine/src/dev-mode/dev-protocol.ts`
+in `polyant-enterprise` is the single source of truth for every frame in `protocol.ts`. Porting a
+change here means reading that file directly — never trusting a paraphrase of it, including this
+one — and, for anything beyond an additive frame like this, bumping `DEV_PROTOCOL_VERSION` in BOTH
+copies so the handshake rejects a mismatch explicitly instead of a frame silently failing to
+validate three turns later.
+
 ## Testing
 
-36 tests over five files, all driving the runtime through an injected in-memory socket
+39 tests over five files, all driving the runtime through an injected in-memory socket
 (`fake-socket.test-fixture.ts`, excluded from the build):
 
-- `session.test.ts` (15) — handshake frame shape, `hello.error` with no retry, duplicate names,
+- `session.test.ts` (17) — handshake frame shape, `hello.error` with no retry, duplicate names,
   invocation with state/audit write-back, a thrown tool error as a result with **no** writes, an
   unserved tool name, ctx RPC correlated to the in-flight `callId` (and a failed one surfacing as a
   rejection), abort discarding the result and rejecting pending RPCs, `ping`→`pong`, reconnection
-  re-declaring the current set, `reconnect: false`, idempotent `close`, and `tools.update` hot
-  reload serving the new implementation. Two of them pin the process-lifetime property on the
-  timer's `ref` instead of on elapsed time — `hasRef()` is Node's own answer to "would this keep
-  the process alive?" — so nothing waits on a real 60s delay and no test can hang on one; restoring
-  the `unref()` makes the first of the two fail.
-- `protocol.test.ts` (7) — the version constant, the ctx-op list, Zod defaults, the 64KB
-  `inputSchema` cap, round-trips, and that `parseServerFrame` never throws.
+  re-declaring the current set, `reconnect: false`, idempotent `close`, `tools.update` hot reload
+  that only serves the new implementation once `tools.update.result` confirms it (not merely once
+  the frame is sent), the previous implementation staying authoritative on `ok: false`, and an
+  unconfirmed update being dropped — not promoted — across a reconnect. Two of them pin the
+  process-lifetime property on the timer's `ref` instead of on elapsed time — `hasRef()` is Node's
+  own answer to "would this keep the process alive?" — so nothing waits on a real 60s delay and no
+  test can hang on one; restoring the `unref()` makes the first of the two fail.
+- `protocol.test.ts` (8) — the version constant, the ctx-op list, Zod defaults, the 64KB
+  `inputSchema` cap, round-trips, that `parseServerFrame` never throws, and `tools.update.result`
+  parsing both outcomes with `warnings` required (no default).
 - `ctx-proxy.test.ts` (7) — synchronous reads/writes, ordering, buffer copies, inline fields, the
   three RPC ops with their arguments, and `Buffer` revival on attachments.
 - `load-tools.test.ts` (5) + `sdk-version.test.ts` (2).
