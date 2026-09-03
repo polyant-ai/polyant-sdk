@@ -144,6 +144,49 @@ systematic errors).
 - Tool types: `ToolSpec`, `ToolDefinition`, `ToolInfo`, `ToolInputExample`, `RequiredSecretSpec`, `RequiredSecretsInput`.
 - Context types: `ToolContext`, `InstanceSlug`, `AuditLogger`, `Attachment`, `ChannelStateIdentity`, `ConversationStateApi`, `ConversationHistoryApi`, `ConversationMessage`, `ConversationRole`, `RecentMessagesOptions`, `ToolApiKeys`.
 - Hook types: `HookSpec`, `HookFunctionDefinition`, `HookContext`, `HookResult`, `HookEvent`, `HookEventPayload`, `HookAi`.
+- `@polyant-ai/plugin-sdk/dev` (separate entry point): `serveDevSession`, `loadToolsFromPaths`, `isToolDefinition`, `toDeclarations`, `createCtxProxy`, `defaultWebSocketFactory`, the ported wire protocol (`DEV_PROTOCOL_VERSION`, `clientFrameSchema`, `serverFrameSchema`, `parseServerFrame`, `serializeClientFrame`, `CTX_OPS`) and its types. See **Dev mode** above.
+
+## Dev mode: run a local tool inside a remote agent
+
+`@polyant-ai/plugin-sdk/dev` is a **separate, Node-only entry point** (nothing in it is
+pulled in by the root import). It connects your local `*.tool.ts` files to a remote
+Polyant agent over the engine's dev bridge: the agent equips them for a turn and calls
+their real `execute` with the real `ToolContext` — scoped secrets, conversation state,
+audit, OAuth, history. Your code never leaves your machine.
+
+Issue a per-agent token from the agent's **Dev** tab in the admin panel, then:
+
+```ts
+import { serveDevSession, loadToolsFromPaths } from "@polyant-ai/plugin-sdk/dev";
+
+const tools = await loadToolsFromPaths(["./src/tools"]);
+const session = await serveDevSession({
+  agentSlug: "acme-bot",
+  token: process.env.POLYANT_DEV_TOKEN!,
+  url: "wss://engine.example.com",  // /dev-mode/socket is appended when the path is empty
+  tools,
+  onEvent: (event) => console.log(event),   // the library never prints on its own
+});
+// later, on a file change:
+session.updateTools(await loadToolsFromPaths(["./src/tools"], { cacheBust: true }));
+// session.close();
+```
+
+Three things to know before using it:
+
+- **Run the process with `tsx`** (or another TypeScript loader) if your tool files are
+  `.ts`. `loadToolsFromPaths` only does a dynamic `import()`; registering a loader is a
+  decision about the whole process, so it is the caller's, not this package's.
+- **The default transport is Node's global `WebSocket`, which needs Node 22+** — this
+  package takes no new runtime dependency for it. On Node 20/21, inject one:
+  `webSocketImpl: (url) => new WS(url)` with `ws`. The same seam is how you test a
+  session with no network.
+- `ctx.state` is **synchronous**, exactly as in-process: reads are served from the
+  snapshot that came with the invocation, and your writes are returned with the result so
+  the engine applies them only when the call succeeds.
+
+Design record: [`docs/superpowers/specs/2026-09-03-dev-session-client-runtime-design.md`](docs/superpowers/specs/2026-09-03-dev-session-client-runtime-design.md).
+The engine-side documentation is `docs/dev-mode.md` in `polyant-enterprise`.
 
 ## Versioning
 

@@ -52,8 +52,30 @@ The **SDK version IS the compatibility contract.** It binds to `plugin.json.engi
 ```bash
 npm run build       # tsc → dist/ (tsconfig.build.json)
 npm run typecheck   # tsc --noEmit
-npm test            # vitest (contract 7, context-types 6, hooks 4, hooks-contract 1)
+npm test            # vitest (contract 7, context-types 6, hooks 5, hooks-contract 1, dev 34)
 ```
+
+## Entry points
+
+Two, and the second must not leak into the first:
+
+- **`.`** (`src/index.ts`) — the authoring contract. Runtime-agnostic, no Node built-ins
+  beyond the `Buffer` type, no I/O.
+- **`./dev`** (`src/dev/`) — the dev-session client runtime: it speaks the engine's dev
+  bridge over a WebSocket so a local `*.tool.ts` executes inside a remote agent. Node-only
+  (`node:crypto`, `node:fs`), and nothing in `.` imports it, which is why `engines` stays
+  `>=20` even though its DEFAULT transport (the global `WebSocket`) needs Node 22 — on an
+  older Node the caller injects `webSocketImpl`.
+
+`src/dev/protocol.ts` is a **verbatim port** of the engine's `dev-mode/dev-protocol.ts`,
+relicensed Apache-2.0 for this package. The two copies are the same contract: change one
+and you must change the other, and an incompatible change bumps `DEV_PROTOCOL_VERSION` in
+both — the engine's handshake rejects a mismatch explicitly. `SDK_VERSION`
+(`src/dev/sdk-version.ts`) is a literal because this entry must import from `dist/` with no
+filesystem read; `sdk-version.test.ts` fails when it drifts from `package.json`.
+
+A `*.test-fixture.ts` file is test-only shared code, excluded from `tsconfig.build.json`
+alongside `*.test.ts` — the fake socket lives there because more than one test needs it.
 
 ## How to add/change the contract
 
