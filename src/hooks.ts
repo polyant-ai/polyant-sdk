@@ -26,6 +26,9 @@ export type HookEvent =
 
 /** Server-built event payload (the only trusted data source for a hook). */
 export interface HookEventPayload {
+  agent: { slug: string };
+  /** @deprecated Renamed to `agent` in 1.6.0. The engine sets both to the same
+   * object, so a hook built against <= 1.5.0 keeps working. Removed in the next major. */
   instance: { slug: string };
   conversation: { id: string };
   channel: { type: string; id: string };
@@ -70,6 +73,9 @@ export interface HookContext {
    * `requiredSecrets`.
    */
   secrets: Record<string, string>;
+  agent: { slug: string; provider?: string; model?: string; flags: Record<string, boolean> };
+  /** @deprecated Renamed to `agent` in 1.6.0. The engine sets both to the same
+   * object, so a hook built against <= 1.5.0 keeps working. Removed in the next major. */
   instance: { slug: string; provider?: string; model?: string; flags: Record<string, boolean> };
   apiKeys?: ToolApiKeys;
   ai: HookAi;

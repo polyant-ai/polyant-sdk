@@ -28,7 +28,8 @@ function fakeHistory(feed: ConversationMessage[]): ConversationHistoryApi {
 }
 
 const stubCtx = (over: Partial<ToolContext> = {}): ToolContext => ({
-  instanceId: "inst" as ToolContext["instanceId"],
+  agentId: "inst" as ToolContext["agentId"],
+  instanceId: "inst" as ToolContext["agentId"],
   audit: { log() {} },
   ...over,
 });
