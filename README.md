@@ -152,6 +152,11 @@ refusal is something you can hand back to the model, never a thrown turn. Every
 call is audited by the engine. There is deliberately **no method to erase the
 whole knowledge base**: wiping an agent's knowledge is a panel operation.
 
+Declare the minimum you need with `requiredKnowledge: "read" | "write" |
+"manage"` on `defineTool`: the engine then does not equip the tool at all when
+the agent grants less, exactly as it prunes a tool whose `requiredSecrets` are
+unset — so the model is never offered a tool whose every call would be refused.
+
 Note that a `write` triggers chunking and embedding with the agent's own
 embedder — it costs a provider call, and the documents you write are subject to
 the same re-embedding as any other when that embedder changes.
