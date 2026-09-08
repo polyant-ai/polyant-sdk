@@ -115,6 +115,47 @@ idempotent, and note that deterministic (`temperature: 0`) turns reproduce the
 same output and merely exhaust the cap (it suits sporadic output corruption, not
 systematic errors).
 
+## The agent's knowledge base (`ctx.knowledge`)
+
+A tool can search, read, write and manage the knowledge base of the agent it is
+running in — the same store the panel's Knowledge tab and the core knowledge
+tools use. It is **absent unless the agent grants it**, so handle `undefined`:
+
+```ts
+execute: async ({ question }, ctx) => {
+  const kb = ctx.knowledge;
+  if (!kb) return { error: "knowledge access is not granted for this agent" };
+
+  const hits = await kb.search(question, { limit: 5 });
+
+  if (kb.level !== "read") {
+    const res = await kb.write({ filename: "faq-log.md", content: question });
+    if (!res.ok) return { error: `could not log the question: ${res.reason}` };
+  }
+  return { hits };
+}
+```
+
+Four things decide what your tool can do, and none of them is negotiable from
+inside the plugin:
+
+| | |
+|---|---|
+| **The agent is implicit** | No method takes an agent. The accessor belongs to the turn, so you cannot reach another agent's knowledge base. |
+| **Presence is the read grant** | `ctx.knowledge` is missing when the agent grants nothing, which is why reads return data directly instead of a status wrapper. |
+| **`level` says how far you can go** | `read` / `write` / `manage`, monotone. Read it and tell the model what is possible rather than letting it hit a refusal. |
+| **Ownership is engine-assigned** | `origin`/`originRef` record who wrote a document. At `write` you create documents and update the ones you wrote; a panel upload or another plugin's document answers `not_owned` until the level is `manage`. |
+
+Mutations answer `{ ok: true, document, created }` or `{ ok: false, reason }` —
+`not_granted`, `not_owned`, `not_found`, `too_large`, `unsupported` — so a
+refusal is something you can hand back to the model, never a thrown turn. Every
+call is audited by the engine. There is deliberately **no method to erase the
+whole knowledge base**: wiping an agent's knowledge is a panel operation.
+
+Note that a `write` triggers chunking and embedding with the agent's own
+embedder — it costs a provider call, and the documents you write are subject to
+the same re-embedding as any other when that embedder changes.
+
 ## `plugin.json` (at your repo root)
 
 ```json
@@ -142,7 +183,8 @@ systematic errors).
 - `toJsonSchema(zodSchema)` — the zod→JSON-Schema conversion `defineTool` uses.
 - `normalizeRequiredSecrets`, `requiredSecretKeys` — helpers for the secrets contract.
 - Tool types: `ToolSpec`, `ToolDefinition`, `ToolInfo`, `ToolInputExample`, `RequiredSecretSpec`, `RequiredSecretsInput`.
-- Context types: `ToolContext`, `InstanceSlug`, `AuditLogger`, `Attachment`, `ChannelStateIdentity`, `ConversationStateApi`, `ConversationHistoryApi`, `ConversationMessage`, `ConversationRole`, `RecentMessagesOptions`, `ToolApiKeys`.
+- Context types: `ToolContext`, `InstanceSlug`, `AuditLogger`, `Attachment`, `ChannelStateIdentity`, `ConversationStateApi`, `ConversationHistoryApi`, `ConversationMessage`, `ConversationRole`, `RecentMessagesOptions`, `ToolApiKeys`, `OAuthAccessApi`, `OAuthTokenResult`.
+- Knowledge types: `KnowledgeApi`, `KnowledgeAccessLevel`, `KnowledgeOrigin`, `KnowledgeDenialReason`, `KnowledgeSearchHit`, `KnowledgeSearchOptions`, `KnowledgeDocumentSummary`, `KnowledgeDocumentContent`, `KnowledgeListOptions`, `KnowledgeWriteResult`.
 - Hook types: `HookSpec`, `HookFunctionDefinition`, `HookContext`, `HookResult`, `HookEvent`, `HookEventPayload`, `HookAi`.
 - `@polyant-ai/plugin-sdk/dev` (separate entry point): `serveDevSession`, `loadToolsFromPaths`, `isToolDefinition`, `toDeclarations`, `createCtxProxy`, `defaultWebSocketFactory`, the ported wire protocol (`DEV_PROTOCOL_VERSION`, `clientFrameSchema`, `serverFrameSchema`, `parseServerFrame`, `serializeClientFrame`, `CTX_OPS`) and its types. See **Dev mode** above.
 

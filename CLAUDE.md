@@ -4,7 +4,7 @@ Guide for people working **inside** this repo (developers + AI agents). For auth
 
 ## What it is
 
-The **public, STATELESS contract** for Polyant plugin authors. It exposes `defineTool` + `defineHook` + the types a tool or hook consumes (`ToolSpec`, `ToolDefinition`, `ToolContext`, `RequiredSecretSpec`, `ToolInfo`, `InstanceSlug`, `AuditLogger`, `Attachment`, `ConversationStateApi`, `ConversationHistoryApi`, `ToolApiKeys`, `HookSpec`, `HookContext`, `HookResult`, …).
+The **public, STATELESS contract** for Polyant plugin authors. It exposes `defineTool` + `defineHook` + the types a tool or hook consumes (`ToolSpec`, `ToolDefinition`, `ToolContext`, `RequiredSecretSpec`, `ToolInfo`, `InstanceSlug`, `AuditLogger`, `Attachment`, `ConversationStateApi`, `ConversationHistoryApi`, `KnowledgeApi`, `ToolApiKeys`, `HookSpec`, `HookContext`, `HookResult`, …).
 
 This package does **NOT own the tool registry** — that belongs to the engine loader (`polyant-enterprise`). As a result, having **multiple copies of the SDK around is harmless**: each plugin resolves its own copy (and its own `zod`, `ai`, …) with no shared-singleton coupling.
 
@@ -52,7 +52,7 @@ The **SDK version IS the compatibility contract.** It binds to `plugin.json.engi
 ```bash
 npm run build       # tsc → dist/ (tsconfig.build.json)
 npm run typecheck   # tsc --noEmit
-npm test            # vitest (contract 7, context-types 6, hooks 5, hooks-contract 1, dev 39)
+npm test            # vitest (contract 7, context-types 6, knowledge-api 10, hooks 5, hooks-contract 1, dev 41)
 ```
 
 ## Entry points

@@ -23,6 +23,13 @@ import type {
   ConversationMessage,
   ConversationStateApi,
   InstanceSlug,
+  KnowledgeApi,
+  KnowledgeDocumentContent,
+  KnowledgeDocumentSummary,
+  KnowledgeListOptions,
+  KnowledgeSearchHit,
+  KnowledgeSearchOptions,
+  KnowledgeWriteResult,
   OAuthTokenResult,
   RecentMessagesOptions,
   ToolApiKeys,
@@ -83,6 +90,36 @@ export function createCtxProxy(opts: { inline: InlineToolContext; rpc: CtxRpc })
     },
   };
 
+  // `ctx.knowledge` exists only when the agent granted access: presence IS the
+  // read grant, so an absent `knowledgeLevel` must leave the field undefined
+  // rather than produce an accessor that refuses every call.
+  const knowledge: KnowledgeApi | undefined = inline.knowledgeLevel
+    ? {
+        level: inline.knowledgeLevel,
+        async search(query: string, o?: KnowledgeSearchOptions): Promise<KnowledgeSearchHit[]> {
+          return (await rpc("knowledge.search", [query, o])) as KnowledgeSearchHit[];
+        },
+        async get(filename: string): Promise<KnowledgeDocumentContent | null> {
+          return (await rpc("knowledge.get", [filename])) as KnowledgeDocumentContent | null;
+        },
+        async list(o?: KnowledgeListOptions): Promise<KnowledgeDocumentSummary[]> {
+          return (await rpc("knowledge.list", [o])) as KnowledgeDocumentSummary[];
+        },
+        async write(input): Promise<KnowledgeWriteResult> {
+          return (await rpc("knowledge.write", [input])) as KnowledgeWriteResult;
+        },
+        async append(input): Promise<KnowledgeWriteResult> {
+          return (await rpc("knowledge.append", [input])) as KnowledgeWriteResult;
+        },
+        async delete(filename: string): Promise<KnowledgeWriteResult> {
+          return (await rpc("knowledge.delete", [filename])) as KnowledgeWriteResult;
+        },
+        async reingest(filename: string): Promise<KnowledgeWriteResult> {
+          return (await rpc("knowledge.reingest", [filename])) as KnowledgeWriteResult;
+        },
+      }
+    : undefined;
+
   const ctx: DevToolContext = {
     instanceId: inline.instanceId as InstanceSlug,
     conversationId: inline.conversationId,
@@ -110,6 +147,7 @@ export function createCtxProxy(opts: { inline: InlineToolContext; rpc: CtxRpc })
         return (await rpc("oauth.connectResult", [provider])) as Record<string, unknown>;
       },
     },
+    knowledge,
   };
 
   return {

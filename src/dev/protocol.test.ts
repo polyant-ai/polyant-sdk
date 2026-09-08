@@ -17,11 +17,20 @@ describe("dev protocol (client port)", () => {
     expect(DEV_PROTOCOL_VERSION).toBe(1);
   });
 
-  it("exposes exactly the three RPC-class ctx ops", () => {
+  it("exposes exactly the RPC-class ctx ops the engine implements", () => {
+    // Closed list on purpose: the engine's `dev-ctx-bridge` switches on these
+    // names, so an op added on one side only is a runtime error on a dev turn.
     expect([...CTX_OPS]).toEqual([
       "conversation.getRecentMessages",
       "oauth.requireToken",
       "oauth.connectResult",
+      "knowledge.search",
+      "knowledge.get",
+      "knowledge.list",
+      "knowledge.write",
+      "knowledge.append",
+      "knowledge.delete",
+      "knowledge.reingest",
     ]);
   });
 
@@ -87,6 +96,32 @@ describe("dev protocol (client port)", () => {
     expect(serverFrameSchema.safeParse(invoke).success).toBe(true);
     expect(
       serverFrameSchema.safeParse({ ...invoke, ctx: { instanceId: "a", secrets: {} } }).success,
+    ).toBe(false);
+  });
+
+  it("carries the knowledge grant inline, and treats its absence as no access", () => {
+    const base = { type: "tool.invoke", callId: "c", tool: "t", input: {} };
+    const granted = serverFrameSchema.safeParse({
+      ...base,
+      ctx: { instanceId: "a", secrets: {}, state: {}, knowledgeLevel: "write" },
+    });
+    expect(granted.success && granted.data.type === "tool.invoke" && granted.data.ctx.knowledgeLevel)
+      .toBe("write");
+
+    // An engine that grants nothing simply omits the field (as does an older
+    // engine that knows no knowledge ops at all) — never a "none" sentinel.
+    const ungranted = serverFrameSchema.safeParse({
+      ...base,
+      ctx: { instanceId: "a", secrets: {}, state: {} },
+    });
+    expect(ungranted.success && ungranted.data.type === "tool.invoke" && ungranted.data.ctx.knowledgeLevel)
+      .toBeUndefined();
+
+    expect(
+      serverFrameSchema.safeParse({
+        ...base,
+        ctx: { instanceId: "a", secrets: {}, state: {}, knowledgeLevel: "none" },
+      }).success,
     ).toBe(false);
   });
 });
