@@ -147,7 +147,8 @@ inside the plugin:
 | **Ownership is engine-assigned** | `origin`/`originRef` record who wrote a document. At `write` you create documents and update the ones you wrote; a panel upload or another plugin's document answers `not_owned` until the level is `manage`. |
 
 Mutations answer `{ ok: true, document, created }` or `{ ok: false, reason }` —
-`not_granted`, `not_owned`, `not_found`, `too_large`, `unsupported` — so a
+`not_granted`, `not_owned`, `not_found`, `too_large`, `limit_reached`,
+`unsupported` — so a
 refusal is something you can hand back to the model, never a thrown turn. Every
 call is audited by the engine. There is deliberately **no method to erase the
 whole knowledge base**: wiping an agent's knowledge is a panel operation.

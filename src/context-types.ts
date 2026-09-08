@@ -156,6 +156,9 @@ export type KnowledgeDenialReason =
   | "not_found"
   /** The resulting document exceeds the engine's per-document size cap. */
   | "too_large"
+  /** The knowledge base is already at the engine's per-agent document cap, so a
+   *  NEW document cannot be created. Updating an existing one is unaffected. */
+  | "limit_reached"
   /** The engine declined the content itself (unsupported type, ingestion refusal). */
   | "unsupported";
 
