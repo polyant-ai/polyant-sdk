@@ -185,4 +185,28 @@ describe("KnowledgeApi — grant semantics", () => {
     expect((await kb.list({ mineOnly: true })).map((d) => d.filename)).toEqual(["notes.md"]);
     expect((await kb.list({ origins: ["panel"] })).map((d) => d.filename)).toEqual(["policy.md"]);
   });
+
+  it("a read rejects when the store cannot answer, while a mutation still returns", async () => {
+    // The two halves of the contract, side by side: a read has nowhere to put a
+    // failure, a mutation always has a `reason`.
+    const broken: KnowledgeApi = {
+      level: "write",
+      async search() { throw new Error("pgvector unreachable"); },
+      async get() { throw new Error("pgvector unreachable"); },
+      async list() { throw new Error("pgvector unreachable"); },
+      async write() { return { ok: false, reason: "unsupported" }; },
+      async append() { return { ok: false, reason: "unsupported" }; },
+      async delete() { return { ok: false, reason: "not_granted" }; },
+      async reingest() { return { ok: false, reason: "not_granted" }; },
+    };
+
+    await expect(broken.search("q")).rejects.toThrow("pgvector unreachable");
+    await expect(broken.get("a.md")).rejects.toThrow("pgvector unreachable");
+    // NOT `[]`: an empty result would tell the model no such document exists.
+    await expect(broken.list()).rejects.toThrow("pgvector unreachable");
+    expect(await broken.write({ filename: "a.md", content: "x" })).toEqual({
+      ok: false,
+      reason: "unsupported",
+    });
+  });
 });

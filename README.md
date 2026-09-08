@@ -146,7 +146,13 @@ inside the plugin:
 | **`level` says how far you can go** | `read` / `write` / `manage`, monotone. Read it and tell the model what is possible rather than letting it hit a refusal. |
 | **Ownership is engine-assigned** | `origin`/`originRef` record who wrote a document. At `write` you create documents and update the ones you wrote; a panel upload or another plugin's document answers `not_owned` until the level is `manage`. |
 
-Mutations answer `{ ok: true, document, created }` or `{ ok: false, reason }` —
+Reads (`search`, `get`, `list`) **reject** when the store cannot answer, instead
+of returning `null`/`[]` — "no such document" and "the database is unreachable"
+are opposite facts, and reporting the second as the first makes an agent announce
+that no such documentation exists. Catch them if your tool wants to degrade.
+
+Mutations, by contrast, **never reject**: they answer
+`{ ok: true, document, created }` or `{ ok: false, reason }` —
 `not_granted`, `not_owned`, `not_found`, `too_large`, `limit_reached`,
 `unsupported` — so a
 refusal is something you can hand back to the model, never a thrown turn. Every

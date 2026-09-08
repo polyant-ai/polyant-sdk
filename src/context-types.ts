@@ -226,6 +226,14 @@ export type KnowledgeWriteResult =
  *   MUST handle `undefined`. Mutations still answer with
  *   {@link KnowledgeWriteResult} because `write` and `manage` are separate
  *   grants that can be refused while reading is allowed.
+ * - **A mutation never rejects; a read can.** Every mutation answers a
+ *   {@link KnowledgeWriteResult}, infrastructure failures included
+ *   (`unsupported`), so a plugin need not wrap them in try/catch. A read returns
+ *   DATA and therefore has nowhere to put a failure: it REJECTS rather than
+ *   answering `null`/`[]`, because "no such document" and "the store could not
+ *   answer" are opposite facts — and during an outage the second one reported as
+ *   the first makes an agent state that no documentation exists. Catch a read if
+ *   you want to degrade; the engine has already recorded the failure.
  * - **Ownership is engine-assigned.** A `write`-level caller creates documents
  *   and updates the ones it wrote; a document from the panel or another writer
  *   answers `not_owned` until the level is `manage`.
