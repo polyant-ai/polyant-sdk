@@ -2,7 +2,7 @@
 
 import type { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
-import type { ToolContext } from "./context-types.js";
+import type { KnowledgeAccessLevel, ToolContext } from "./context-types.js";
 
 // ---------------------------------------------------------------------------
 // requiredSecrets contract (moved verbatim from the engine registry — the
@@ -132,6 +132,12 @@ export interface ToolSpec {
   requiredEnv?: string[];
   /** Per-instance config fields (secrets / typed selects). */
   requiredSecrets?: RequiredSecretsInput;
+  /** Minimum knowledge-base access this tool needs to work at all. The engine
+   * does NOT equip the tool when the agent grants less — same pruning as
+   * `requiredSecrets`, so the model is never offered a tool whose every call
+   * would answer `not_granted`. Omitted ⇒ the tool works without
+   * `ctx.knowledge` (it may still read it defensively when present). */
+  requiredKnowledge?: KnowledgeAccessLevel;
   /** Harness tools are hidden from the admin UI; equipped only when the supervisor
    * runs with a matching `includeHarness` set. */
   harness?: boolean;
@@ -156,6 +162,8 @@ export interface ToolDefinition {
   category?: string;
   requiredEnv?: string[];
   requiredSecrets: RequiredSecretSpec[];
+  /** Minimum knowledge access needed; the engine prunes the tool below it. */
+  requiredKnowledge?: KnowledgeAccessLevel;
   harness?: boolean;
   metaTool?: boolean;
   inputExamples?: ToolInputExample[];
@@ -170,6 +178,7 @@ export interface ToolInfo {
   description: string;
   category: string;
   requiredSecrets?: RequiredSecretSpec[];
+  requiredKnowledge?: KnowledgeAccessLevel;
   inputExamples?: ToolInputExample[];
 }
 
@@ -200,6 +209,7 @@ export function defineTool(spec: ToolSpec): ToolDefinition {
     category: spec.category,
     requiredEnv: spec.requiredEnv,
     requiredSecrets: normalizeRequiredSecrets(spec.requiredSecrets, spec.name),
+    requiredKnowledge: spec.requiredKnowledge,
     harness: spec.harness,
     metaTool: spec.metaTool,
     inputExamples: spec.inputExamples,

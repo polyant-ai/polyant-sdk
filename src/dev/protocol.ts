@@ -82,6 +82,19 @@ export const CTX_OPS = [
   "conversation.getRecentMessages",
   "oauth.requireToken",
   "oauth.connectResult",
+  // `ctx.knowledge` is async throughout, so every method is RPC. Its only
+  // synchronous member (`level`) rides the inline ctx instead — see
+  // `inlineToolContextSchema.knowledgeLevel`. ADDITIVE (no
+  // DEV_PROTOCOL_VERSION bump): an engine that does not know these ops also
+  // sends no `knowledgeLevel`, so the client builds no `ctx.knowledge` and
+  // never asks for one.
+  "knowledge.search",
+  "knowledge.get",
+  "knowledge.list",
+  "knowledge.write",
+  "knowledge.append",
+  "knowledge.delete",
+  "knowledge.reingest",
 ] as const;
 export type CtxOp = (typeof CTX_OPS)[number];
 
@@ -139,6 +152,9 @@ const inlineToolContextSchema = z.object({
   state: z.record(z.string(), z.unknown()),
   channel: z.record(z.string(), z.unknown()).optional(),
   attachments: z.array(z.unknown()).optional(),
+  /** The agent's knowledge grant. Absent ⇒ no access: the client then exposes
+   *  no `ctx.knowledge` at all, which is how the in-process ctx signals it. */
+  knowledgeLevel: z.enum(["read", "write", "manage"]).optional(),
 });
 
 export type InlineToolContext = z.infer<typeof inlineToolContextSchema>;

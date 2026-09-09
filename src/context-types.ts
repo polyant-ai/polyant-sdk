@@ -130,6 +130,145 @@ export interface OAuthAccessApi {
 }
 
 /**
+ * How much of the knowledge base the current agent grants to tool code. A
+ * LEVEL, not a set of flags: the three are monotone (`manage` ⊃ `write` ⊃
+ * `read`), so a state like "writes but cannot read" cannot be configured.
+ * Readable as {@link KnowledgeApi.level} so a tool can tell the model what it
+ * is able to do instead of provoking a refusal.
+ */
+export type KnowledgeAccessLevel = "read" | "write" | "manage";
+
+/** Who wrote a knowledge document. Engine-assigned and NEVER a tool input —
+ *  it is the field ownership is decided on, so a tool that could set it could
+ *  claim someone else's document. `panel` is a human upload, `agent` a core
+ *  knowledge tool, `plugin` a plugin tool (with `originRef` naming which). */
+export type KnowledgeOrigin = "panel" | "agent" | "plugin";
+
+/** Why a knowledge mutation was refused. Returned, never thrown: a throw inside
+ *  a plugin tool becomes a broken turn with nothing the model can act on. */
+export type KnowledgeDenialReason =
+  /** The agent's granted level is below the one this call needs. */
+  | "not_granted"
+  /** The document exists but was written by someone else (see
+   *  {@link KnowledgeOrigin}); overwriting it needs `manage`. */
+  | "not_owned"
+  /** No document with that filename for this agent. */
+  | "not_found"
+  /** The resulting document exceeds the engine's per-document size cap. */
+  | "too_large"
+  /** The knowledge base is already at the engine's per-agent document cap, so a
+   *  NEW document cannot be created. Updating an existing one is unaffected. */
+  | "limit_reached"
+  /** The engine declined the content itself (unsupported type, ingestion refusal). */
+  | "unsupported";
+
+/** One retrieved chunk from a hybrid (vector + full-text) knowledge search. */
+export interface KnowledgeSearchHit {
+  /** The chunk's text. */
+  content: string;
+  /** Fused relevance score — comparable WITHIN one result set only. */
+  score: number;
+  /** Filename of the parent document. */
+  source: string;
+  /** The chunk's position inside its parent document (0-based). */
+  chunkIndex: number;
+}
+
+/** Options for {@link KnowledgeApi.search}. */
+export interface KnowledgeSearchOptions {
+  /** Maximum hits to return. Engine default when omitted. */
+  limit?: number;
+}
+
+/** A knowledge document without its content. */
+export interface KnowledgeDocumentSummary {
+  filename: string;
+  mimeType: string;
+  sizeBytes: number;
+  /** Ingestion status as the engine reports it (e.g. pending/ready/failed). */
+  status: string;
+  origin: KnowledgeOrigin;
+  /** Which writer produced it — a plugin namespace for `plugin`, else `null`. */
+  originRef: string | null;
+  /** ISO-8601, or `null` when the engine has no timestamp for it. */
+  updatedAt: string | null;
+}
+
+/** A knowledge document with its full raw content. */
+export interface KnowledgeDocumentContent extends KnowledgeDocumentSummary {
+  content: string;
+}
+
+/** Options for {@link KnowledgeApi.list}. */
+export interface KnowledgeListOptions {
+  /** Restrict to documents from these origins. Omitted ⇒ all origins. */
+  origins?: readonly KnowledgeOrigin[];
+  /** Restrict to documents this caller itself wrote. */
+  mineOnly?: boolean;
+}
+
+/** Outcome of a knowledge mutation: the affected document, or a refusal reason. */
+export type KnowledgeWriteResult =
+  | { ok: true; document: KnowledgeDocumentSummary; created: boolean }
+  | { ok: false; reason: KnowledgeDenialReason };
+
+/**
+ * Read, write and manage the CURRENT agent's knowledge base, exposed as
+ * `ctx.knowledge`.
+ *
+ * Three properties are the contract, not implementation detail:
+ *
+ * - **The agent is implicit.** No method takes an instance: the accessor is
+ *   closed over the agent of the running turn, so tool code cannot name another
+ *   agent's knowledge base.
+ * - **Presence IS the read grant.** The engine omits `ctx.knowledge` entirely
+ *   when the agent grants no access, so reads need no status wrapper — plugins
+ *   MUST handle `undefined`. Mutations still answer with
+ *   {@link KnowledgeWriteResult} because `write` and `manage` are separate
+ *   grants that can be refused while reading is allowed.
+ * - **A mutation never rejects; a read can.** Every mutation answers a
+ *   {@link KnowledgeWriteResult}, infrastructure failures included
+ *   (`unsupported`), so a plugin need not wrap them in try/catch. A read returns
+ *   DATA and therefore has nowhere to put a failure: it REJECTS rather than
+ *   answering `null`/`[]`, because "no such document" and "the store could not
+ *   answer" are opposite facts — and during an outage the second one reported as
+ *   the first makes an agent state that no documentation exists. Catch a read if
+ *   you want to degrade; the engine has already recorded the failure.
+ * - **Ownership is engine-assigned.** A `write`-level caller creates documents
+ *   and updates the ones it wrote; a document from the panel or another writer
+ *   answers `not_owned` until the level is `manage`.
+ *
+ * Every call is audited by the engine, so a plugin cannot omit the trail. There
+ * is deliberately NO method to erase the whole knowledge base: wiping an
+ * agent's knowledge is a panel operation with a human behind it.
+ */
+export interface KnowledgeApi {
+  /** What this agent grants — check it before offering a mutation to the model. */
+  readonly level: KnowledgeAccessLevel;
+  /** Hybrid (vector + full-text) search over the agent's documents, most
+   *  relevant first. Empty array when nothing matches. */
+  search(query: string, opts?: KnowledgeSearchOptions): Promise<KnowledgeSearchHit[]>;
+  /** One document with its full content by exact filename, or `null`. */
+  get(filename: string): Promise<KnowledgeDocumentContent | null>;
+  /** The agent's documents without their content. */
+  list(opts?: KnowledgeListOptions): Promise<KnowledgeDocumentSummary[]>;
+  /** Create the document, or replace the content of one this caller owns.
+   *  `mimeType` applies on creation only. Needs `write`. */
+  write(input: {
+    filename: string;
+    content: string;
+    mimeType?: string;
+  }): Promise<KnowledgeWriteResult>;
+  /** Append to a document this caller owns, creating it when absent. Needs `write`. */
+  append(input: { filename: string; content: string }): Promise<KnowledgeWriteResult>;
+  /** Delete ONE document by filename. Needs `manage`. */
+  delete(filename: string): Promise<KnowledgeWriteResult>;
+  /** Re-chunk and re-embed one document — the repair for a failed ingestion or
+   *  an embedder change. Needs `manage`. */
+  reingest(filename: string): Promise<KnowledgeWriteResult>;
+}
+
+/**
  * Runtime context passed to every tool's `execute(input, ctx)`.
  * Created by the engine and handed into the plugin's execute — the plugin only
  * reads/calls its members, so nothing here requires shared runtime identity.
@@ -160,4 +299,8 @@ export interface ToolContext {
   /** Per-conversation OAuth access (tokens brokered + refreshed by the engine).
    *  Absent on engines without OAuth support — plugins MUST handle undefined. */
   oauth?: OAuthAccessApi;
+  /** Read/write/manage access to THIS agent's knowledge base. Present only when
+   *  the agent grants access (see {@link KnowledgeApi}), so its very presence is
+   *  the read grant — plugins MUST handle undefined. */
+  knowledge?: KnowledgeApi;
 }

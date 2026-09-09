@@ -24,6 +24,16 @@ export type {
   ToolApiKeys,
   OAuthTokenResult,
   OAuthAccessApi,
+  KnowledgeAccessLevel,
+  KnowledgeOrigin,
+  KnowledgeDenialReason,
+  KnowledgeSearchHit,
+  KnowledgeSearchOptions,
+  KnowledgeDocumentSummary,
+  KnowledgeDocumentContent,
+  KnowledgeListOptions,
+  KnowledgeWriteResult,
+  KnowledgeApi,
 } from "./context-types.js";
 export { defineHook } from "./hooks.js";
 export type {

@@ -93,4 +93,37 @@ describe("createCtxProxy", () => {
     expect(ctx.attachments?.[0].data?.toString("utf8")).toBe("hi");
     expect(ctx.attachments?.[1]).toEqual({ type: "image", url: "https://example.test/a.png" });
   });
+
+  it("exposes no ctx.knowledge when the engine sent no grant", () => {
+    const rpc = vi.fn();
+    const { ctx } = createCtxProxy({ inline: inline(), rpc });
+    expect(ctx.knowledge).toBeUndefined();
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it("proxies every knowledge method over RPC and carries the level inline", async () => {
+    const rpc = vi.fn().mockResolvedValue({ ok: true });
+    const { ctx } = createCtxProxy({ inline: inline({ knowledgeLevel: "manage" }), rpc });
+    // `level` is synchronous, so it must come from the inline ctx, not a call.
+    expect(ctx.knowledge!.level).toBe("manage");
+    expect(rpc).not.toHaveBeenCalled();
+
+    await ctx.knowledge!.search("rimborsi", { limit: 3 });
+    await ctx.knowledge!.get("policy.md");
+    await ctx.knowledge!.list({ mineOnly: true });
+    await ctx.knowledge!.write({ filename: "notes.md", content: "x" });
+    await ctx.knowledge!.append({ filename: "notes.md", content: "y" });
+    await ctx.knowledge!.delete("notes.md");
+    await ctx.knowledge!.reingest("policy.md");
+
+    expect(rpc.mock.calls).toEqual([
+      ["knowledge.search", ["rimborsi", { limit: 3 }]],
+      ["knowledge.get", ["policy.md"]],
+      ["knowledge.list", [{ mineOnly: true }]],
+      ["knowledge.write", [{ filename: "notes.md", content: "x" }]],
+      ["knowledge.append", [{ filename: "notes.md", content: "y" }]],
+      ["knowledge.delete", ["notes.md"]],
+      ["knowledge.reingest", ["policy.md"]],
+    ]);
+  });
 });

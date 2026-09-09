@@ -72,4 +72,23 @@ describe("toJsonSchema", () => {
     const asString = JSON.stringify(x);
     expect(asString).toContain("null");
   });
+
+  it("carries requiredKnowledge through to the definition, absent when unset", () => {
+    const withGrant = defineTool({
+      name: "logQuestion",
+      description: "Append the question to the FAQ log.",
+      requiredKnowledge: "write",
+      parameters: z.object({ q: z.string() }),
+      execute: async () => ({}),
+    });
+    expect(withGrant.requiredKnowledge).toBe("write");
+
+    const without = defineTool({
+      name: "plain",
+      description: "Needs no knowledge access.",
+      parameters: z.object({ q: z.string() }),
+      execute: async () => ({}),
+    });
+    expect(without.requiredKnowledge).toBeUndefined();
+  });
 });
