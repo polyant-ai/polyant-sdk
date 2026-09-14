@@ -15,6 +15,11 @@ export type DevSessionEvent =
   | { type: "handshake_rejected"; reason: string }
   | { type: "invoke"; callId: string; tool: string }
   | { type: "result"; callId: string; tool: string; ok: boolean; durationMs: number; error?: string }
+  /** A hook invocation, kept separate from `invoke`/`result`: a tool call and a
+   *  hook call are different things to watch, and a CLI that printed them under
+   *  one label would make a turn's trace unreadable. */
+  | { type: "hook_invoke"; callId: string; hook: string; event: string }
+  | { type: "hook_result"; callId: string; hook: string; ok: boolean; durationMs: number; error?: string }
   | { type: "aborted"; callId: string; tool: string }
   | { type: "ctx_request"; callId: string; op: CtxOp }
   /**
@@ -32,6 +37,8 @@ export type DevSessionEvent =
    * change is live. `reason` is the engine's explanation.
    */
   | { type: "tools_update_rejected"; reason: string; tools: readonly string[] }
+  | { type: "hooks_updated"; hooks: readonly string[]; warnings: readonly string[] }
+  | { type: "hooks_update_rejected"; reason: string; hooks: readonly string[] }
   | { type: "disconnected"; code?: number; reason: string; willReconnect: boolean; retryInMs?: number }
   /** A non-fatal fault: an unparseable frame, a send on a dead socket, a listener that threw. */
   | { type: "error"; message: string }

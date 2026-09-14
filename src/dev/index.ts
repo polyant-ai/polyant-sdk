@@ -9,11 +9,17 @@
  * package root so the authoring contract stays runtime-agnostic and free of it.
  */
 
-export { serveDevSession, toDeclarations, DEV_SOCKET_PATH, DEFAULT_DEV_SOCKET_URL } from "./session.js";
+export { serveDevSession, toDeclarations, toHookDeclarations, DEV_SOCKET_PATH, DEFAULT_DEV_SOCKET_URL } from "./session.js";
 export type { ServeDevSessionOptions, DevSessionHandle, DevReconnectOptions } from "./session.js";
 
 export { loadToolsFromPaths, isToolDefinition } from "./load-tools.js";
 export type { LoadToolsOptions } from "./load-tools.js";
+
+export { loadHooksFromPaths, isHookDefinition, devHook } from "./load-hooks.js";
+export type { LoadHooksOptions, DevHook, DevHookRoute } from "./load-hooks.js";
+
+export { createHookCtxProxy } from "./hook-ctx-proxy.js";
+export type { HookCtxProxy, HookCtxRpc } from "./hook-ctx-proxy.js";
 
 export { createCtxProxy } from "./ctx-proxy.js";
 export type { CtxProxy, CtxRpc, DevToolContext } from "./ctx-proxy.js";
@@ -27,6 +33,7 @@ export { SDK_VERSION } from "./sdk-version.js";
 
 export {
   DEV_PROTOCOL_VERSION,
+  DEV_HOOK_EVENTS,
   CTX_OPS,
   clientFrameSchema,
   serverFrameSchema,
@@ -38,7 +45,10 @@ export type {
   ServerFrame,
   CtxOp,
   DevToolDeclaration,
+  DevHookDeclaration,
+  DevHookEvent,
   InlineToolContext,
+  InlineHookContext,
   StateWrite,
   AuditEntryPayload,
 } from "./protocol.js";

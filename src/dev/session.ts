@@ -17,6 +17,8 @@ import { randomUUID } from "node:crypto";
 import type { ToolDefinition } from "../contract.js";
 import { requiredSecretKeys } from "../contract.js";
 import { createCtxProxy } from "./ctx-proxy.js";
+import { createHookCtxProxy } from "./hook-ctx-proxy.js";
+import type { DevHook } from "./load-hooks.js";
 import type { DevSessionEvent, DevSessionEventHandler } from "./events.js";
 import {
   DEV_PROTOCOL_VERSION,
@@ -24,6 +26,7 @@ import {
   parseServerFrame,
   type ClientFrame,
   type CtxOp,
+  type DevHookDeclaration,
   type DevToolDeclaration,
   type ServerFrame,
 } from "./protocol.js";
@@ -52,6 +55,8 @@ export interface ServeDevSessionOptions {
   /** Full socket URL, or a base URL whose path is filled in with {@link DEV_SOCKET_PATH}. */
   url?: string;
   tools: readonly ToolDefinition[];
+  /** Local hook functions with the route each takes into the pipeline. */
+  hooks?: readonly DevHook[];
   webSocketImpl?: DevWebSocketFactory;
   onEvent?: DevSessionEventHandler;
   /**
@@ -89,6 +94,8 @@ export interface DevSessionHandle {
   readonly connected: boolean;
   /** Replace the served set and tell the engine (`tools.update`) — hot reload. */
   updateTools(tools: readonly ToolDefinition[]): void;
+  /** The hook half of the same reload (`hooks.update`). */
+  updateHooks(hooks: readonly DevHook[]): void;
   /** Stop serving and close the socket. Idempotent. */
   close(reason?: string): void;
 }
@@ -106,6 +113,33 @@ export function toDeclarations(tools: readonly ToolDefinition[]): DevToolDeclara
     inputSchema: tool.inputSchema,
     requiredSecrets: requiredSecretKeys(tool.requiredSecrets),
     overrides: null,
+  }));
+}
+
+/**
+ * A hook declaration as it goes on the wire.
+ *
+ * Unlike `toDeclarations`, `overrides` here is MEANINGFUL: a hook is resolved by
+ * name, not equipped by collision, so substituting a configured function is
+ * something the client has to say. A hook with no route is still declared — the
+ * engine warns that nothing will invoke it, which is a truer answer than
+ * dropping it here in silence.
+ */
+export function toHookDeclarations(hooks: readonly DevHook[]): DevHookDeclaration[] {
+  return hooks.map(({ definition, route }) => ({
+    name: definition.name,
+    description: definition.description,
+    requiredSecrets: requiredSecretKeys(definition.requiredSecrets),
+    mutatesResponse: definition.mutatesResponse ?? false,
+    overrides: route && "overrides" in route && route.overrides ? route.overrides : null,
+    bindTo:
+      route && "bindTo" in route && route.bindTo
+        ? {
+            event: route.bindTo.event,
+            position: route.bindTo.position ?? 0,
+            timeoutMs: route.bindTo.timeoutMs ?? 10_000,
+          }
+        : null,
   }));
 }
 
@@ -129,6 +163,9 @@ interface InFlightCall {
   aborted: boolean;
   /** Outstanding ctx RPCs for this call, rejected when it ends. */
   readonly rpcIds: Set<string>;
+  /** Set for a hook call: aborts the signal the handler is holding. A tool
+   *  receives no signal in this runtime, so it has none. */
+  onAbort?: () => void;
 }
 
 interface PendingRpc {
@@ -145,6 +182,12 @@ interface PendingRpc {
 interface PendingToolUpdate {
   readonly tools: Map<string, ToolDefinition>;
   readonly declarations: DevToolDeclaration[];
+}
+
+/** The hook half of {@link PendingToolUpdate}, correlated the same FIFO way. */
+interface PendingHookUpdate {
+  readonly hooks: Map<string, DevHook>;
+  readonly declarations: DevHookDeclaration[];
 }
 
 const DEFAULT_RECONNECT: Required<DevReconnectOptions> = {
@@ -169,6 +212,8 @@ class DevSessionRuntime implements DevSessionHandle {
 
   private tools: Map<string, ToolDefinition>;
   private declarations: DevToolDeclaration[];
+  private hooks: Map<string, DevHook>;
+  private hookDeclarations: DevHookDeclaration[];
 
   private socket: DevWebSocketLike | null = null;
   private handshaken = false;
@@ -180,6 +225,9 @@ class DevSessionRuntime implements DevSessionHandle {
   private readonly pendingRpcs = new Map<string, PendingRpc>();
   /** `tools.update`s sent, awaiting `tools.update.result`. FIFO — see {@link PendingToolUpdate}. */
   private readonly pendingToolUpdates: PendingToolUpdate[] = [];
+  /** The hook half of the same queue, separate because the two results are
+   *  separate frames and a shared FIFO would mis-pair them. */
+  private readonly pendingHookUpdates: PendingHookUpdate[] = [];
 
   constructor(opts: ServeDevSessionOptions) {
     this.agentSlug = opts.agentSlug;
@@ -192,6 +240,8 @@ class DevSessionRuntime implements DevSessionHandle {
     this.sdkVersion = opts.sdkVersion ?? SDK_VERSION;
     this.tools = indexTools(opts.tools);
     this.declarations = toDeclarations(opts.tools);
+    this.hooks = indexHooks(opts.hooks ?? []);
+    this.hookDeclarations = toHookDeclarations(opts.hooks ?? []);
   }
 
   get connected(): boolean {
@@ -232,6 +282,23 @@ class DevSessionRuntime implements DevSessionHandle {
     this.send({ type: "tools.update", tools: declarations });
   }
 
+  /** The hook half of {@link updateTools}, with the same pending-until-confirmed
+   *  discipline: the engine can reject a reload, and a rejected one leaves the
+   *  previous hooks being served — here as well as there. */
+  updateHooks(hooks: readonly DevHook[]): void {
+    const indexed = indexHooks(hooks);
+    const declarations = toHookDeclarations(hooks);
+    if (!this.connected) {
+      this.pendingHookUpdates.length = 0;
+      this.hooks = indexed;
+      this.hookDeclarations = declarations;
+      this.emit({ type: "hooks_updated", hooks: [...indexed.keys()], warnings: [] });
+      return;
+    }
+    this.pendingHookUpdates.push({ hooks: indexed, declarations });
+    this.send({ type: "hooks.update", hooks: declarations });
+  }
+
   close(reason = "closed by the local runtime"): void {
     if (this.stopped) return;
     this.stopped = true;
@@ -239,6 +306,7 @@ class DevSessionRuntime implements DevSessionHandle {
     this.failAllPendingRpcs(`dev session closed: ${reason}`);
     this.inFlight.clear();
     this.pendingToolUpdates.length = 0;
+    this.pendingHookUpdates.length = 0;
     this.handshaken = false;
     const socket = this.socket;
     this.socket = null;
@@ -286,6 +354,7 @@ class DevSessionRuntime implements DevSessionHandle {
           token: this.token,
           sdkVersion: this.sdkVersion,
           tools: this.declarations,
+          hooks: this.hookDeclarations,
         });
         this.armStaleTimer();
       });
@@ -439,6 +508,41 @@ class DevSessionRuntime implements DevSessionHandle {
       case "tool.invoke":
         void this.serveInvoke(frame);
         return;
+      case "hook.invoke":
+        void this.serveHookInvoke(frame);
+        return;
+      case "hook.abort": {
+        const call = this.inFlight.get(frame.callId);
+        if (!call) return;
+        call.aborted = true;
+        call.onAbort?.();
+        this.inFlight.delete(frame.callId);
+        for (const rpcId of call.rpcIds) {
+          this.pendingRpcs.get(rpcId)?.reject(new Error("call aborted by the engine"));
+          this.pendingRpcs.delete(rpcId);
+        }
+        this.emit({ type: "aborted", callId: frame.callId, tool: call.tool });
+        return;
+      }
+      case "hooks.update.result": {
+        const pending = this.pendingHookUpdates.shift();
+        if (!pending) return;
+        if (frame.ok) {
+          this.hooks = pending.hooks;
+          this.hookDeclarations = pending.declarations;
+          this.emit({ type: "hooks_updated", hooks: [...this.hooks.keys()], warnings: frame.warnings });
+        } else {
+          // REJECTED: the previous hooks are still the served ones, untouched
+          // here on purpose. The event says so, so a developer who just saved a
+          // file does not read a bare warning and assume the new code is live.
+          this.emit({
+            type: "hooks_update_rejected",
+            reason: frame.reason ?? "the engine rejected the update",
+            hooks: [...this.hooks.keys()],
+          });
+        }
+        return;
+      }
       case "tool.abort": {
         const call = this.inFlight.get(frame.callId);
         if (!call) return;
@@ -537,6 +641,95 @@ class DevSessionRuntime implements DevSessionHandle {
     this.emit({ type: "result", callId, tool: frame.tool, ok, durationMs, ...(error ? { error } : {}) });
   }
 
+  /**
+   * Serve one `hook.invoke`: run the local handler against a proxied
+   * {@link HookContext} and answer with its CONTROL over the turn.
+   *
+   * The engine resolves a hook by name, so a substituting declaration is found
+   * here under the name the CLIENT declared — the engine sends that one back,
+   * not the canonical name it substitutes, precisely so this lookup works.
+   */
+  private async serveHookInvoke(frame: Extract<ServerFrame, { type: "hook.invoke" }>): Promise<void> {
+    const { callId } = frame;
+    const hook = this.hooks.get(frame.hook);
+    this.emit({ type: "hook_invoke", callId, hook: frame.hook, event: frame.event });
+    if (!hook) {
+      this.sendHookResult({
+        callId,
+        ok: false,
+        error: `hook "${frame.hook}" is not served by this dev session`,
+      });
+      this.emit({
+        type: "hook_result", callId, hook: frame.hook, ok: false, durationMs: 0,
+        error: "hook not served by this dev session",
+      });
+      return;
+    }
+
+    const call: InFlightCall = { tool: frame.hook, aborted: false, rpcIds: new Set() };
+    this.inFlight.set(callId, call);
+    // The engine owns the deadline (the row's `timeoutMs`) and signals it with
+    // `hook.abort`; this controller is how that reaches the handler's own
+    // `ctx.abortSignal`, so a hook sees one signal meaning "stop, nobody is
+    // reading your result" — the same contract as in-process.
+    const abort = new AbortController();
+    call.onAbort = () => abort.abort();
+    const proxy = createHookCtxProxy({
+      inline: frame.ctx,
+      event: frame.event,
+      payload: frame.payload,
+      rpc: (op, args) => this.ctxRpc(callId, call, op, args),
+      abortSignal: abort.signal,
+    });
+    const startedAt = Date.now();
+
+    let ok: boolean;
+    let control: unknown;
+    let error: string | undefined;
+    try {
+      control = (await hook.definition.handler(proxy.ctx)) ?? undefined;
+      ok = true;
+    } catch (err) {
+      ok = false;
+      error = errMsg(err);
+    }
+    const durationMs = Date.now() - startedAt;
+    this.inFlight.delete(callId);
+
+    // An aborted call's outcome is DISCARDED: the engine has already settled it,
+    // and a late control return would be steering a turn that has moved on.
+    if (call.aborted) return;
+
+    this.sendHookResult({
+      callId,
+      ok,
+      control: ok ? (control as Parameters<typeof this.sendHookResult>[0]["control"]) : undefined,
+      error,
+      stateWrites: ok ? proxy.stateWrites() : [],
+      auditEntries: proxy.auditEntries(),
+    });
+    this.emit({ type: "hook_result", callId, hook: frame.hook, ok, durationMs, ...(error ? { error } : {}) });
+  }
+
+  private sendHookResult(outcome: {
+    callId: string;
+    ok: boolean;
+    control?: Extract<ClientFrame, { type: "hook.result" }>["control"];
+    error?: string;
+    stateWrites?: Extract<ClientFrame, { type: "hook.result" }>["stateWrites"];
+    auditEntries?: Extract<ClientFrame, { type: "hook.result" }>["auditEntries"];
+  }): void {
+    this.send({
+      type: "hook.result",
+      callId: outcome.callId,
+      ok: outcome.ok,
+      control: outcome.control,
+      error: outcome.error,
+      stateWrites: outcome.stateWrites ?? [],
+      auditEntries: outcome.auditEntries ?? [],
+    });
+  }
+
   private ctxRpc(callId: string, call: InFlightCall, op: CtxOp, args: unknown[]): Promise<unknown> {
     if (call.aborted) return Promise.reject(new Error("call aborted by the engine"));
     if (!this.connected) return Promise.reject(new Error(`ctx.${op}: the dev session is not connected`));
@@ -597,6 +790,21 @@ class DevSessionRuntime implements DevSessionHandle {
       /* a listener's fault is the listener's problem */
     }
   }
+}
+
+function indexHooks(hooks: readonly DevHook[]): Map<string, DevHook> {
+  const map = new Map<string, DevHook>();
+  for (const hook of hooks) {
+    if (map.has(hook.definition.name)) {
+      // The engine refuses the whole handshake on a duplicate; failing here says
+      // which hook, before a socket is even opened.
+      throw new Error(
+        `duplicate hook name "${hook.definition.name}": a dev session cannot declare it twice`,
+      );
+    }
+    map.set(hook.definition.name, hook);
+  }
+  return map;
 }
 
 function indexTools(tools: readonly ToolDefinition[]): Map<string, ToolDefinition> {
