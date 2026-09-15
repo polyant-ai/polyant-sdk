@@ -31,6 +31,8 @@ describe("dev protocol (client port)", () => {
       "knowledge.append",
       "knowledge.delete",
       "knowledge.reingest",
+      // Hook contexts only: `ctx.ai.chat` has no tool-side counterpart.
+      "ai.chat",
     ]);
   });
 

@@ -198,7 +198,7 @@ the same re-embedding as any other when that embedder changes.
 - Context types: `ToolContext`, `InstanceSlug`, `AuditLogger`, `Attachment`, `ChannelStateIdentity`, `ConversationStateApi`, `ConversationHistoryApi`, `ConversationMessage`, `ConversationRole`, `RecentMessagesOptions`, `ToolApiKeys`, `OAuthAccessApi`, `OAuthTokenResult`.
 - Knowledge types: `KnowledgeApi`, `KnowledgeAccessLevel`, `KnowledgeOrigin`, `KnowledgeDenialReason`, `KnowledgeSearchHit`, `KnowledgeSearchOptions`, `KnowledgeDocumentSummary`, `KnowledgeDocumentContent`, `KnowledgeListOptions`, `KnowledgeWriteResult`.
 - Hook types: `HookSpec`, `HookFunctionDefinition`, `HookContext`, `HookResult`, `HookEvent`, `HookEventPayload`, `HookAi`.
-- `@polyant-ai/plugin-sdk/dev` (separate entry point): `serveDevSession`, `loadToolsFromPaths`, `isToolDefinition`, `toDeclarations`, `createCtxProxy`, `defaultWebSocketFactory`, the ported wire protocol (`DEV_PROTOCOL_VERSION`, `clientFrameSchema`, `serverFrameSchema`, `parseServerFrame`, `serializeClientFrame`, `CTX_OPS`) and its types. See **Dev mode** above.
+- `@polyant-ai/plugin-sdk/dev` (separate entry point): `serveDevSession`, `loadToolsFromPaths`, `loadHooksFromPaths`, `devHook`, `isToolDefinition`, `isHookDefinition`, `toDeclarations`, `toHookDeclarations`, `createCtxProxy`, `createHookCtxProxy`, `defaultWebSocketFactory`, the ported wire protocol (`DEV_PROTOCOL_VERSION`, `clientFrameSchema`, `serverFrameSchema`, `parseServerFrame`, `serializeClientFrame`, `CTX_OPS`) and its types. See **Dev mode** above.
 
 ## Dev mode: run a local tool inside a remote agent
 
@@ -242,6 +242,46 @@ Three things to know before using it:
 - `ctx.state` is **synchronous**, exactly as in-process: reads are served from the
   snapshot that came with the invocation, and your writes are returned with the result so
   the engine applies them only when the call succeeds.
+
+### Hooks
+
+A session serves hook functions the same way, with one extra thing to say: a hook is
+resolved by name rather than equipped by collision, so how it enters the agent's pipeline
+is declared, not inferred. A hook file says it beside its default export:
+
+```ts
+import { defineHook } from "@polyant-ai/plugin-sdk";
+import { devHook } from "@polyant-ai/plugin-sdk/dev";
+
+export default defineHook({ name: "guard", description: "…", handler: async (ctx) => … });
+
+// Either run in place of a function the agent already has…
+export const dev = devHook({ overrides: "dentalpro:greeting" });
+// …or run on an event no configured row mentions, for this session only:
+export const dev = devHook({ bindTo: { event: "message_received", position: 10 } });
+```
+
+```ts
+import { loadHooksFromPaths, serveDevSession } from "@polyant-ai/plugin-sdk/dev";
+
+const session = await serveDevSession({
+  agentSlug: "acme-bot",
+  token: process.env.POLYANT_DEV_TOKEN!,
+  tools: await loadToolsFromPaths(["./src/tools"]),
+  hooks: await loadHooksFromPaths(["./src/hooks"]),
+});
+session.updateHooks(await loadHooksFromPaths(["./src/hooks"], { cacheBust: true }));
+```
+
+`overrides` keeps the configured rows in charge of the event, the position and the
+timeout, and only swaps the implementation. `bindTo` brings its own position and timeout,
+and the row it produces lives exactly as long as the session — nothing is written to the
+agent's configuration. A bound hook takes a bare name: the engine reads a plugin namespace
+off the function name to decide grants, so it refuses a self-declared one.
+
+The context is the real `HookContext`: `state` synchronous over a snapshot with write-back,
+`conversation` and `ai.chat` over RPC, `secrets` scoped to what the hook declared. The
+deadline belongs to the engine — your handler sees it as `ctx.abortSignal`.
 
 Design record: [`docs/superpowers/specs/2026-09-03-dev-session-client-runtime-design.md`](docs/superpowers/specs/2026-09-03-dev-session-client-runtime-design.md).
 The engine-side documentation is `docs/dev-mode.md` in `polyant-enterprise`.

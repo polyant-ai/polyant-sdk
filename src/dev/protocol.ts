@@ -61,6 +61,42 @@ const devToolDeclarationSchema = z.object({
   overrides: z.string().min(1).nullable().default(null),
 });
 
+/** The lifecycle events a hook can bind to. Repeated here as literals rather
+ *  than imported from the hook contract, because this file is a verbatim port
+ *  of the engine's and that one cannot import engine types either. The engine
+ *  side pins its copy to `HOOK_EVENTS` with a guardrail test. */
+export const DEV_HOOK_EVENTS = [
+  "conversation_start",
+  "message_received",
+  "response_generated",
+  "response_sent",
+] as const;
+
+/**
+ * A hook function as the client declares it.
+ *
+ * `overrides` names a function the agent already runs: the configured rows keep
+ * deciding event, position and timeout, and only the implementation changes.
+ * `bindTo` asks to run on an event no row mentions, so it carries the position
+ * and the timeout a row would have carried. A declaration with neither is
+ * registered and never invoked — the engine warns rather than refusing.
+ */
+const devHookDeclarationSchema = z.object({
+  name: z.string().min(1).max(100),
+  description: z.string().max(4096).default(""),
+  requiredSecrets: z.array(z.string().min(1)).default([]),
+  mutatesResponse: z.boolean().default(false),
+  overrides: z.string().min(1).max(100).nullable().default(null),
+  bindTo: z
+    .object({
+      event: z.enum(DEV_HOOK_EVENTS),
+      position: z.number().int().min(0).max(1000).default(0),
+      timeoutMs: z.number().int().min(1).max(120_000).default(10_000),
+    })
+    .nullable()
+    .default(null),
+});
+
 /** A state write, recorded by the local proxy and re-applied by the engine. */
 const stateWriteSchema = z.discriminatedUnion("op", [
   z.object({ op: z.literal("set"), key: z.string().min(1), value: z.unknown() }),
@@ -95,6 +131,12 @@ export const CTX_OPS = [
   "knowledge.append",
   "knowledge.delete",
   "knowledge.reingest",
+  // `ctx.ai.chat` exists on a hook context and not on a tool one, and it is
+  // async like every other op here. ADDITIVE: a client that does not know it
+  // never calls it. The request carries NO provider or model — the engine sets
+  // those from the turn, so a client cannot route the call at a model the agent
+  // never admitted.
+  "ai.chat",
 ] as const;
 export type CtxOp = (typeof CTX_OPS)[number];
 
@@ -108,6 +150,34 @@ export const clientFrameSchema = z.discriminatedUnion("type", [
     token: z.string().min(1).max(256),
     sdkVersion: z.string().min(1).max(32),
     tools: z.array(devToolDeclarationSchema).max(200),
+    /** ADDITIVE: a client serving no hooks does not send the field. */
+    hooks: z.array(devHookDeclarationSchema).max(100).default([]),
+  }),
+  z.object({
+    type: z.literal("hooks.update"),
+    hooks: z.array(devHookDeclarationSchema).max(100),
+  }),
+  /**
+   * A hook's outcome. Not `tool.result` under another name: a tool returns a
+   * VALUE to the model, a hook returns CONTROL over the turn (stop it, replace
+   * the reply, replay it, add context). Two frames is what keeps a reader from
+   * having to guess which of the two meanings a `result` field carries.
+   */
+  z.object({
+    type: z.literal("hook.result"),
+    callId: z.string().min(1),
+    ok: z.boolean(),
+    error: z.string().optional(),
+    control: z
+      .object({
+        halt: z.object({ message: z.string(), persist: z.boolean().optional() }).optional(),
+        replaceResponse: z.object({ message: z.string() }).optional(),
+        regenerate: z.object({ reason: z.string().optional() }).optional(),
+        injectContext: z.string().optional(),
+      })
+      .optional(),
+    stateWrites: z.array(stateWriteSchema).default([]),
+    auditEntries: z.array(auditEntrySchema).default([]),
   }),
   z.object({
     type: z.literal("tools.update"),
@@ -134,6 +204,8 @@ export const clientFrameSchema = z.discriminatedUnion("type", [
 
 export type ClientFrame = z.infer<typeof clientFrameSchema>;
 export type DevToolDeclaration = z.infer<typeof devToolDeclarationSchema>;
+export type DevHookDeclaration = z.infer<typeof devHookDeclarationSchema>;
+export type DevHookEvent = (typeof DEV_HOOK_EVENTS)[number];
 export type StateWrite = z.infer<typeof stateWriteSchema>;
 export type AuditEntryPayload = z.infer<typeof auditEntrySchema>;
 
@@ -159,6 +231,40 @@ const inlineToolContextSchema = z.object({
 
 export type InlineToolContext = z.infer<typeof inlineToolContextSchema>;
 
+/**
+ * The inline `ctx` of a hook: the same idea as the tool one — everything that
+ * needs no round trip — over a different surface, because `HookContext` is not
+ * `ToolContext`. No `attachments` and no `memoryScopeKey` (a hook has neither);
+ * `instance` instead, which a hook reads as an object.
+ */
+const inlineHookContextSchema = z.object({
+  instanceId: z.string().min(1),
+  conversationId: z.string().min(1),
+  instance: z.object({
+    slug: z.string().min(1),
+    provider: z.string().optional(),
+    model: z.string().optional(),
+    flags: z.record(z.string(), z.boolean()).default({}),
+  }),
+  secrets: z.record(z.string(), z.string()),
+  state: z.record(z.string(), z.unknown()),
+  channel: z.record(z.string(), z.unknown()).optional(),
+  knowledgeLevel: z.enum(["read", "write", "manage"]).optional(),
+});
+
+export type InlineHookContext = z.infer<typeof inlineHookContextSchema>;
+
+/** The event payload, built by the engine. It reaches the client as it is: it
+ *  is the only source of the placeholders in-process too. */
+const hookEventPayloadSchema = z.object({
+  instance: z.object({ slug: z.string() }),
+  conversation: z.object({ id: z.string() }),
+  channel: z.object({ type: z.string(), id: z.string() }),
+  user: z.object({ name: z.string() }),
+  message: z.object({ text: z.string() }),
+  response: z.object({ text: z.string(), regenerationCount: z.number() }).optional(),
+});
+
 export const serverFrameSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("hello.ok"),
@@ -181,6 +287,26 @@ export const serverFrameSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("tool.abort"),
     callId: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal("hook.invoke"),
+    callId: z.string().min(1),
+    /** The name the CLIENT declared, not the canonical one it may substitute:
+     *  finding it among its own functions is the client's job. */
+    hook: z.string().min(1),
+    event: z.enum(DEV_HOOK_EVENTS),
+    payload: hookEventPayloadSchema,
+    ctx: inlineHookContextSchema,
+  }),
+  z.object({
+    type: z.literal("hook.abort"),
+    callId: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal("hooks.update.result"),
+    ok: z.boolean(),
+    warnings: z.array(z.string()),
+    reason: z.string().optional(),
   }),
   z.object({
     type: z.literal("ctx.response"),
