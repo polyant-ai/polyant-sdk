@@ -12,7 +12,10 @@ import type { KnowledgeAccessLevel, ToolContext } from "./context-types.js";
 export interface RequiredSecretSpec {
   key: string;
   type: "text" | "select";
+  /** The field's title in the tool's panel. Without it the panel humanizes `key`. */
   label?: string;
+  /** What the value is and where to find it, shown under the title. Without it the
+   * panel says the author gave no description — worth one sentence. */
   description?: string;
   choices?: string[];
   optional?: boolean;

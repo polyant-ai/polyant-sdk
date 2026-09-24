@@ -40,7 +40,10 @@ export default defineTool({
   name: "bookAppointment",              // becomes "<namespace>:bookAppointment"
   description: "Book an appointment in the CRM.",
   category: "plugin",
-  requiredSecrets: [{ key: "crm_api_key", type: "text" }],
+  requiredSecrets: [{                   // a field in the tool's panel: give it a title and one sentence
+    key: "crm_api_key", type: "text",
+    label: "CRM API key", description: "Key of the CRM account the appointments are written to.",
+  }],
   parameters: z.object({                // STATIC schema (must not depend on ctx)
     patientId: z.string(),
     date: z.string().describe("ISO 8601"),
@@ -176,7 +179,9 @@ the same re-embedding as any other when that embedder changes.
   "version": "1.0.0",
   "engine": ">=0.1.0",
   "toolsDir": "tools",
-  "namespace": "innova"
+  "namespace": "innova",
+  "displayName": "Innova Semplice",
+  "description": "Quotes and contracts from the Innova back office."
 }
 ```
 
@@ -187,6 +192,12 @@ the same re-embedding as any other when that embedder changes.
 | `engine` | Semver range of engine versions you support; mismatch → the engine skips your plugin with a warning. |
 | `toolsDir` | Dir scanned for `*.tool.ts` (default `tools`). |
 | `namespace` | Prefix applied to every tool name (`<namespace>:<name>`). Defaults to `name`. |
+| `displayName` | Optional. How the admin panel names the plugin in the agent's Tools section and in the tool picker. Without it the panel humanizes the namespace. |
+| `description` | Optional. One sentence on what the plugin's tools are for, shown when the picker is browsed by plugin. |
+
+Tools are enabled one by one on each agent; the plugin is how they are grouped
+and named, never what is switched. Engines that predate `displayName` and
+`description` ignore them, so adding them does not narrow your `engine` range.
 
 ## API surface
 
