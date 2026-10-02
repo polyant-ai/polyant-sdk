@@ -194,10 +194,28 @@ the same re-embedding as any other when that embedder changes.
 | `namespace` | Prefix applied to every tool name (`<namespace>:<name>`). Defaults to `name`. |
 | `displayName` | Optional. How the admin panel names the plugin in the agent's Tools section and in the tool picker. Without it the panel humanizes the namespace. |
 | `description` | Optional. One sentence on what the plugin's tools are for, shown when the picker is browsed by plugin. |
+| `longDescription` | Optional, marketplace. A few paragraphs shown, expandable, on the plugin's page: inline text, or the path of a `.md`/`.txt` file in the repo. Paragraphs are separated by a blank line. |
+| `icon` | Optional, marketplace. Path (inside the repo) to a square PNG, WebP or SVG of at most 32 KiB. Without it the catalogue shows the name's initials. |
+| `category` | Optional, marketplace. Groups and filters the plugin in the install catalogue. Without it the plugin is listed as uncategorised. |
+| `publisher` | Optional, marketplace. Shown next to the name. Defaults to `Exelab` at publication. |
+| `documentationUrl` | Optional, marketplace. HTTPS link opened from the plugin's detail in the catalogue. |
 
 Tools are enabled one by one on each agent; the plugin is how they are grouped
 and named, never what is switched. Engines that predate `displayName` and
 `description` ignore them, so adding them does not narrow your `engine` range.
+The marketplace fields are read only when the plugin is published; every engine
+ignores them in `plugin.json`, so they never narrow the range either.
+
+## Publishing to the marketplace
+
+A plugin published to the marketplace is installed by an Organization Admin from
+inside Polyant, without rebuilding the engine image. Publication runs from the
+`polyant-marketplace` repository (`npm run publish-plugin -- <this repo> --ref <tag>`),
+which builds the runtime bundle, opens the pull request and signs the catalogue
+after the merge. Its `publishing-plugins` skill lists what a plugin must satisfy:
+no `system` block, every npm dependency bundleable into one ESM file (no native
+addons), tools and hooks as default exports of `*.tool.ts` / `*.hook.ts`, and a
+`version` bumped for each release. The `namespace` is permanent once published.
 
 ## API surface
 
