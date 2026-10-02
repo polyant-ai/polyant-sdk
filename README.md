@@ -199,7 +199,10 @@ correct for both.
 | **`null` does not say why** | Unknown, already taken, expired, or produced in another conversation all answer `null`, on purpose: a distinguishable "wrong conversation" would reveal whether a handle exists. |
 
 `put` throws (or rejects) when the engine refuses the payload, for example
-because it exceeds the size limit or the store is full.
+because it exceeds the size limit or the store is full. In dev mode an artifact
+also has to fit in one dev frame (`MAX_DEV_FRAME_BYTES`, 1 MiB once
+base64-encoded, so roughly 765 KB raw): a larger `put` rejects locally without
+being sent, and a larger `take` rejects without consuming the artifact.
 
 ## `plugin.json` (at your repo root)
 
@@ -239,7 +242,7 @@ and named, never what is switched. Engines that predate `displayName` and
 - Context types: `ToolContext`, `InstanceSlug`, `AuditLogger`, `Attachment`, `ChannelStateIdentity`, `ConversationStateApi`, `ConversationHistoryApi`, `ConversationMessage`, `ConversationRole`, `RecentMessagesOptions`, `ToolApiKeys`, `OAuthAccessApi`, `OAuthTokenResult`, `ArtifactApi`, `ArtifactPayload`.
 - Knowledge types: `KnowledgeApi`, `KnowledgeAccessLevel`, `KnowledgeOrigin`, `KnowledgeDenialReason`, `KnowledgeSearchHit`, `KnowledgeSearchOptions`, `KnowledgeDocumentSummary`, `KnowledgeDocumentContent`, `KnowledgeListOptions`, `KnowledgeWriteResult`.
 - Hook types: `HookSpec`, `HookFunctionDefinition`, `HookContext`, `HookResult`, `HookEvent`, `HookEventPayload`, `HookAi`.
-- `@polyant-ai/plugin-sdk/dev` (separate entry point): `serveDevSession`, `loadToolsFromPaths`, `loadHooksFromPaths`, `devHook`, `isToolDefinition`, `isHookDefinition`, `toDeclarations`, `toHookDeclarations`, `createCtxProxy`, `createHookCtxProxy`, `defaultWebSocketFactory`, the ported wire protocol (`DEV_PROTOCOL_VERSION`, `clientFrameSchema`, `serverFrameSchema`, `parseServerFrame`, `serializeClientFrame`, `CTX_OPS`) and its types. See **Dev mode** above.
+- `@polyant-ai/plugin-sdk/dev` (separate entry point): `serveDevSession`, `loadToolsFromPaths`, `loadHooksFromPaths`, `devHook`, `isToolDefinition`, `isHookDefinition`, `toDeclarations`, `toHookDeclarations`, `createCtxProxy`, `createHookCtxProxy`, `defaultWebSocketFactory`, the ported wire protocol (`DEV_PROTOCOL_VERSION`, `clientFrameSchema`, `serverFrameSchema`, `parseServerFrame`, `serializeClientFrame`, `CTX_OPS`, `MAX_DEV_FRAME_BYTES`) and its types. See **Dev mode** above.
 
 ## Dev mode: run a local tool inside a remote agent
 

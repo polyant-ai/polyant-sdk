@@ -3,6 +3,7 @@
 import { describe, expect, it } from "vitest";
 import {
   CTX_OPS,
+  MAX_DEV_FRAME_BYTES,
   DEV_PROTOCOL_VERSION,
   clientFrameSchema,
   parseServerFrame,
@@ -15,6 +16,10 @@ describe("dev protocol (client port)", () => {
     // The engine rejects a mismatch at the handshake, so this constant IS the
     // compatibility contract between the two copies of this file.
     expect(DEV_PROTOCOL_VERSION).toBe(1);
+  });
+
+  it("caps a dev frame at 1 MiB, the engine's maxPayload", () => {
+    expect(MAX_DEV_FRAME_BYTES).toBe(1024 * 1024);
   });
 
   it("exposes exactly the RPC-class ctx ops the engine implements", () => {

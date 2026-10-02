@@ -38,7 +38,16 @@ import type {
   ToolApiKeys,
   ToolContext,
 } from "../context-types.js";
+import { MAX_DEV_FRAME_BYTES } from "./protocol.js";
 import type { AuditEntryPayload, CtxOp, InlineToolContext, StateWrite } from "./protocol.js";
+
+/**
+ * Room left in a `ctx.request` frame for everything except the `args`:
+ * `type`, `op`, the keys, the `rpcId` and the engine-chosen `callId`. Generous
+ * on purpose, mirroring the engine's allowance for a take's response: the
+ * check must refuse a put that would not fit.
+ */
+const CTX_REQUEST_ENVELOPE_BYTES = 4 * 1024;
 
 /**
  * The ctx a dev-served tool receives. Identical to {@link ToolContext} plus
@@ -135,6 +144,19 @@ export function createCtxProxy(opts: { inline: InlineToolContext; rpc: CtxRpc })
         mime: payload.mime,
       };
       const args: unknown[] = ttlMs === undefined ? [wire] : [wire, ttlMs];
+      // The engine closes the socket on a frame above MAX_DEV_FRAME_BYTES, which
+      // would end the whole dev session; refuse locally instead, without sending.
+      // Base64 needs no JSON escaping, so its length counts as is.
+      const frameBytes =
+        CTX_REQUEST_ENVELOPE_BYTES +
+        Buffer.byteLength(JSON.stringify(ttlMs === undefined ? [{ ...wire, data: "" }] : [{ ...wire, data: "" }, ttlMs]), "utf8") +
+        wire.data.length;
+      if (frameBytes > MAX_DEV_FRAME_BYTES) {
+        throw new Error(
+          `artifacts.put: the artifact is ${payload.buffer.byteLength} bytes, too large for a dev-mode frame ` +
+            `(${MAX_DEV_FRAME_BYTES} bytes once base64-encoded); it was not sent`,
+        );
+      }
       return (await rpc("artifacts.put", args)) as string;
     },
     async take(handle: string): Promise<ArtifactPayload | null> {

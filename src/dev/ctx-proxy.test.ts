@@ -172,4 +172,24 @@ describe("createCtxProxy", () => {
       ctx.artifacts.put({ buffer: Buffer.alloc(1), filename: "big.bin", mime: "application/octet-stream" }),
     ).rejects.toThrow("Artifact exceeds the 10 MB limit");
   });
+
+  it("refuses a put too large for a dev frame locally, without sending it", async () => {
+    const rpc = vi.fn();
+    const { ctx } = createCtxProxy({ inline: inline(), rpc });
+    // 800 000 raw bytes ⇒ ~1 066 668 base64 chars, above the 1 MiB frame cap.
+    await expect(
+      ctx.artifacts.put({ buffer: Buffer.alloc(800_000), filename: "big.pdf", mime: "application/pdf" }),
+    ).rejects.toThrow(/too large for a dev-mode frame/);
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it("sends a put whose frame stays within the cap", async () => {
+    const rpc = vi.fn().mockResolvedValue("artifact_ok");
+    const { ctx } = createCtxProxy({ inline: inline(), rpc });
+    // 700 000 raw bytes ⇒ ~933 336 base64 chars, plus envelope: under 1 MiB.
+    await expect(
+      ctx.artifacts.put({ buffer: Buffer.alloc(700_000), filename: "ok.pdf", mime: "application/pdf" }),
+    ).resolves.toBe("artifact_ok");
+    expect(rpc).toHaveBeenCalledTimes(1);
+  });
 });

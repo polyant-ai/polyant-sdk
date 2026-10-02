@@ -35,6 +35,7 @@ export {
   DEV_PROTOCOL_VERSION,
   DEV_HOOK_EVENTS,
   CTX_OPS,
+  MAX_DEV_FRAME_BYTES,
   clientFrameSchema,
   serverFrameSchema,
   parseServerFrame,

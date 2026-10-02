@@ -25,6 +25,17 @@ import { z } from "zod";
 export const DEV_PROTOCOL_VERSION = 1;
 
 /**
+ * Per-frame cap, in bytes of the serialized text. The engine enforces it on
+ * every client → engine frame (the `WebSocketServer`'s `maxPayload`, which
+ * CLOSES the socket on a larger frame), and honours it on the frames it sends
+ * when their size depends on data (`artifacts.take`). It lives here, in the
+ * wire contract, because the client must know it too: an oversized
+ * `artifacts.put` has to be refused before it leaves, not discovered as a
+ * closed socket.
+ */
+export const MAX_DEV_FRAME_BYTES = 1024 * 1024;
+
+/**
  * Byte length of the JSON of an already-parsed value. Returns `Infinity`
  * (⇒ rejected) when it is not serializable: a cycle or a BigInt must not turn
  * the validation of a hostile frame into an exception.
@@ -134,8 +145,11 @@ export const CTX_OPS = [
   // `ctx.artifacts` may answer asynchronously by contract, so both methods are
   // RPC. Bytes travel as base64: `put` sends `[{ data, filename, mime },
   // ttlMs?]` and answers the handle string; `take` sends `[handle]` and answers
-  // `{ data, filename, mime } | null`. ADDITIVE (no DEV_PROTOCOL_VERSION bump):
-  // an engine that does not know them answers an error, which rejects the call.
+  // `{ data, filename, mime } | null`. Both stay within MAX_DEV_FRAME_BYTES: the
+  // client refuses a put that would not fit before sending it, and the engine
+  // answers an error — without consuming the artifact — for a take whose
+  // response would not fit. ADDITIVE (no DEV_PROTOCOL_VERSION bump): an engine
+  // that does not know them answers an error, which rejects the call.
   "artifacts.put",
   "artifacts.take",
   // `ctx.ai.chat` exists on a hook context and not on a tool one, and it is
