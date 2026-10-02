@@ -14,10 +14,13 @@
  *      tool would see in-process, since nothing else writes state during a
  *      single `execute` — and writes are recorded in order and returned with
  *      the result, so they ride the engine's commit-on-success;
- *   3. true RPC for what was already async (`conversation`, `oauth`).
+ *   3. true RPC for what was already async (`conversation`, `oauth`,
+ *      `knowledge`, `artifacts`).
  */
 
 import type {
+  ArtifactApi,
+  ArtifactPayload,
   Attachment,
   ChannelStateIdentity,
   ConversationMessage,
@@ -120,6 +123,27 @@ export function createCtxProxy(opts: { inline: InlineToolContext; rpc: CtxRpc })
       }
     : undefined;
 
+  // The contract lets `put`/`take` answer asynchronously, so here they are a
+  // round trip. JSON cannot carry a Buffer faithfully, so the bytes travel as
+  // base64 in both directions; an engine refusal (too large, store full)
+  // arrives as a failed ctx.response and rejects with the engine's message.
+  const artifacts: ArtifactApi = {
+    async put(payload: ArtifactPayload, ttlMs?: number): Promise<string> {
+      const wire: WireArtifact = {
+        data: payload.buffer.toString("base64"),
+        filename: payload.filename,
+        mime: payload.mime,
+      };
+      const args: unknown[] = ttlMs === undefined ? [wire] : [wire, ttlMs];
+      return (await rpc("artifacts.put", args)) as string;
+    },
+    async take(handle: string): Promise<ArtifactPayload | null> {
+      const raw = (await rpc("artifacts.take", [handle])) as WireArtifact | null | undefined;
+      if (!raw) return null;
+      return { buffer: Buffer.from(raw.data, "base64"), filename: raw.filename, mime: raw.mime };
+    },
+  };
+
   const ctx: DevToolContext = {
     instanceId: inline.instanceId as InstanceSlug,
     conversationId: inline.conversationId,
@@ -148,6 +172,7 @@ export function createCtxProxy(opts: { inline: InlineToolContext; rpc: CtxRpc })
       },
     },
     knowledge,
+    artifacts,
   };
 
   return {
@@ -155,6 +180,13 @@ export function createCtxProxy(opts: { inline: InlineToolContext; rpc: CtxRpc })
     stateWrites: () => [...writes],
     auditEntries: () => [...audit],
   };
+}
+
+/** An {@link ArtifactPayload} as it crosses the dev wire: bytes as base64. */
+interface WireArtifact {
+  data: string;
+  filename: string;
+  mime: string;
 }
 
 /**

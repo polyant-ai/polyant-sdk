@@ -7,6 +7,8 @@ import type {
   ConversationMessage,
   ConversationRole,
   RecentMessagesOptions,
+  ArtifactApi,
+  ArtifactPayload,
 } from "./context-types.js";
 
 /**
@@ -30,6 +32,7 @@ function fakeHistory(feed: ConversationMessage[]): ConversationHistoryApi {
 const stubCtx = (over: Partial<ToolContext> = {}): ToolContext => ({
   instanceId: "inst" as ToolContext["instanceId"],
   audit: { log() {} },
+  artifacts: { put: () => "artifact_stub", take: () => null },
   ...over,
 });
 
@@ -91,4 +94,46 @@ describe("ConversationHistoryApi — contract semantics", () => {
     // Optional field: absent on engines that don't implement it.
     expect(ctx.conversation).toBeUndefined();
   });
+});
+
+describe("ArtifactApi contract", () => {
+  const payload: ArtifactPayload = { buffer: Buffer.from("%PDF"), filename: "a.pdf", mime: "application/pdf" };
+
+  // The engine's in-process store answers synchronously and the dev bridge
+  // answers with Promises: both must satisfy the one contract, and a tool that
+  // awaits works against either.
+  const syncApi = (): ArtifactApi => {
+    const entries = new Map<string, ArtifactPayload>();
+    return {
+      put(p) {
+        const id = `artifact_${entries.size}`;
+        entries.set(id, p);
+        return id;
+      },
+      take(handle) {
+        const entry = entries.get(handle) ?? null;
+        entries.delete(handle);
+        return entry;
+      },
+    };
+  };
+  const asyncApi = (): ArtifactApi => {
+    const inner = syncApi();
+    return {
+      put: async (p, ttl) => inner.put(p, ttl),
+      take: async (h) => inner.take(h),
+    };
+  };
+
+  for (const [name, make] of [
+    ["synchronous", syncApi],
+    ["asynchronous", asyncApi],
+  ] as const) {
+    it(`an awaited put/take round trip works against a ${name} implementation, and take is one-shot`, async () => {
+      const ctx = stubCtx({ artifacts: make() });
+      const handle = await ctx.artifacts.put(payload);
+      expect(await ctx.artifacts.take(handle)).toEqual(payload);
+      expect(await ctx.artifacts.take(handle)).toBeNull();
+    });
+  }
 });

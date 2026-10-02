@@ -241,6 +241,43 @@ describe("serveDevSession — ctx RPC", () => {
     expect(socket.framesOf("tool.result")[0]).toMatchObject({ ok: true });
     handle.close();
   });
+
+  it("hands an artifact through the engine as base64 frames, both ways", async () => {
+    let taken: { buffer: Buffer; filename: string; mime: string } | null = null;
+    let handleSeen = "";
+    const tool = echoTool(async (_input: unknown, ctx: DevToolContext) => {
+      handleSeen = await ctx.artifacts.put({ buffer: Buffer.from("%PDF"), filename: "q.pdf", mime: "application/pdf" });
+      taken = await ctx.artifacts.take(handleSeen);
+      return { ok: true };
+    });
+    const { handle, socket } = await connect({ tools: [tool] });
+
+    socket.deliver({ type: "tool.invoke", callId: "c6", tool: "echo", input: {}, ctx: inlineCtx() });
+    await tick();
+    const [put] = socket.framesOf("ctx.request");
+    expect(put).toMatchObject({
+      callId: "c6",
+      op: "artifacts.put",
+      args: [{ data: Buffer.from("%PDF").toString("base64"), filename: "q.pdf", mime: "application/pdf" }],
+    });
+    socket.deliver({ type: "ctx.response", rpcId: put.rpcId, ok: true, value: "artifact_1" });
+    await tick();
+
+    const [, take] = socket.framesOf("ctx.request");
+    expect(take).toMatchObject({ callId: "c6", op: "artifacts.take", args: ["artifact_1"] });
+    socket.deliver({
+      type: "ctx.response",
+      rpcId: take.rpcId,
+      ok: true,
+      value: { data: Buffer.from("%PDF").toString("base64"), filename: "q.pdf", mime: "application/pdf" },
+    });
+    await tick();
+
+    expect(handleSeen).toBe("artifact_1");
+    expect(taken!.buffer.toString()).toBe("%PDF");
+    expect(socket.framesOf("tool.result")[0]).toMatchObject({ callId: "c6", ok: true });
+    handle.close();
+  });
 });
 
 describe("serveDevSession — abort, ping, reconnection", () => {

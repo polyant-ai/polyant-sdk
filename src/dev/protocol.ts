@@ -131,6 +131,13 @@ export const CTX_OPS = [
   "knowledge.append",
   "knowledge.delete",
   "knowledge.reingest",
+  // `ctx.artifacts` may answer asynchronously by contract, so both methods are
+  // RPC. Bytes travel as base64: `put` sends `[{ data, filename, mime },
+  // ttlMs?]` and answers the handle string; `take` sends `[handle]` and answers
+  // `{ data, filename, mime } | null`. ADDITIVE (no DEV_PROTOCOL_VERSION bump):
+  // an engine that does not know them answers an error, which rejects the call.
+  "artifacts.put",
+  "artifacts.take",
   // `ctx.ai.chat` exists on a hook context and not on a tool one, and it is
   // async like every other op here. ADDITIVE: a client that does not know it
   // never calls it. The request carries NO provider or model — the engine sets
