@@ -34,6 +34,8 @@ export type {
   KnowledgeListOptions,
   KnowledgeWriteResult,
   KnowledgeApi,
+  ArtifactPayload,
+  ArtifactApi,
 } from "./context-types.js";
 export { defineHook } from "./hooks.js";
 export type {

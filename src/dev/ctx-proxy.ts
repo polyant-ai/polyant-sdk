@@ -14,10 +14,13 @@
  *      tool would see in-process, since nothing else writes state during a
  *      single `execute` — and writes are recorded in order and returned with
  *      the result, so they ride the engine's commit-on-success;
- *   3. true RPC for what was already async (`conversation`, `oauth`).
+ *   3. true RPC for what was already async (`conversation`, `oauth`,
+ *      `knowledge`, `artifacts`).
  */
 
 import type {
+  ArtifactApi,
+  ArtifactPayload,
   Attachment,
   ChannelStateIdentity,
   ConversationMessage,
@@ -35,7 +38,16 @@ import type {
   ToolApiKeys,
   ToolContext,
 } from "../context-types.js";
+import { MAX_DEV_FRAME_BYTES } from "./protocol.js";
 import type { AuditEntryPayload, CtxOp, InlineToolContext, StateWrite } from "./protocol.js";
+
+/**
+ * Room left in a `ctx.request` frame for everything except the `args`:
+ * `type`, `op`, the keys, the `rpcId` and the engine-chosen `callId`. Generous
+ * on purpose, mirroring the engine's allowance for a take's response: the
+ * check must refuse a put that would not fit.
+ */
+const CTX_REQUEST_ENVELOPE_BYTES = 4 * 1024;
 
 /**
  * The ctx a dev-served tool receives. Identical to {@link ToolContext} plus
@@ -120,6 +132,40 @@ export function createCtxProxy(opts: { inline: InlineToolContext; rpc: CtxRpc })
       }
     : undefined;
 
+  // The contract lets `put`/`take` answer asynchronously, so here they are a
+  // round trip. JSON cannot carry a Buffer faithfully, so the bytes travel as
+  // base64 in both directions; an engine refusal (too large, store full)
+  // arrives as a failed ctx.response and rejects with the engine's message.
+  const artifacts: ArtifactApi = {
+    async put(payload: ArtifactPayload, ttlMs?: number): Promise<string> {
+      const wire: WireArtifact = {
+        data: payload.buffer.toString("base64"),
+        filename: payload.filename,
+        mime: payload.mime,
+      };
+      const args: unknown[] = ttlMs === undefined ? [wire] : [wire, ttlMs];
+      // The engine closes the socket on a frame above MAX_DEV_FRAME_BYTES, which
+      // would end the whole dev session; refuse locally instead, without sending.
+      // Base64 needs no JSON escaping, so its length counts as is.
+      const frameBytes =
+        CTX_REQUEST_ENVELOPE_BYTES +
+        Buffer.byteLength(JSON.stringify(ttlMs === undefined ? [{ ...wire, data: "" }] : [{ ...wire, data: "" }, ttlMs]), "utf8") +
+        wire.data.length;
+      if (frameBytes > MAX_DEV_FRAME_BYTES) {
+        throw new Error(
+          `artifacts.put: the artifact is ${payload.buffer.byteLength} bytes, too large for a dev-mode frame ` +
+            `(${MAX_DEV_FRAME_BYTES} bytes once base64-encoded); it was not sent`,
+        );
+      }
+      return (await rpc("artifacts.put", args)) as string;
+    },
+    async take(handle: string): Promise<ArtifactPayload | null> {
+      const raw = (await rpc("artifacts.take", [handle])) as WireArtifact | null | undefined;
+      if (!raw) return null;
+      return { buffer: Buffer.from(raw.data, "base64"), filename: raw.filename, mime: raw.mime };
+    },
+  };
+
   const ctx: DevToolContext = {
     instanceId: inline.instanceId as InstanceSlug,
     conversationId: inline.conversationId,
@@ -148,6 +194,7 @@ export function createCtxProxy(opts: { inline: InlineToolContext; rpc: CtxRpc })
       },
     },
     knowledge,
+    artifacts,
   };
 
   return {
@@ -155,6 +202,13 @@ export function createCtxProxy(opts: { inline: InlineToolContext; rpc: CtxRpc })
     stateWrites: () => [...writes],
     auditEntries: () => [...audit],
   };
+}
+
+/** An {@link ArtifactPayload} as it crosses the dev wire: bytes as base64. */
+interface WireArtifact {
+  data: string;
+  filename: string;
+  mime: string;
 }
 
 /**

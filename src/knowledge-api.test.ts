@@ -108,6 +108,7 @@ const PLUGIN_WRITER = { origin: "plugin" as const, ref: "acme" };
 const stubCtx = (over: Partial<ToolContext> = {}): ToolContext => ({
   instanceId: "inst" as ToolContext["instanceId"],
   audit: { log() {} },
+  artifacts: { put: () => "artifact_stub", take: () => null },
   ...over,
 });
 

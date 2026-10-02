@@ -8,6 +8,7 @@ import type { ToolContext } from "./context-types.js";
 const stubCtx = (over: Partial<ToolContext> = {}): ToolContext => ({
   instanceId: "inst" as ToolContext["instanceId"],
   audit: { log() {} },
+  artifacts: { put: () => "artifact_stub", take: () => null },
   ...over,
 });
 

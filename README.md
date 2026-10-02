@@ -171,6 +171,39 @@ Note that a `write` triggers chunking and embedding with the agent's own
 embedder — it costs a provider call, and the documents you write are subject to
 the same re-embedding as any other when that embedder changes.
 
+## Handing a file to another tool (`ctx.artifacts`)
+
+When one tool produces bytes that another tool consumes — a plugin renders a
+PDF, another plugin uploads it — the two cannot import each other's module.
+They exchange a handle instead, and the engine keeps the bytes:
+
+```ts
+// producer
+const handle = await ctx.artifacts.put({ buffer: pdf, filename: "quote.pdf", mime: "application/pdf" });
+return { artifactHandle: handle };
+
+// consumer, later in the same conversation
+const file = await ctx.artifacts.take(artifactHandle);
+if (!file) return { error: "the file is no longer available; generate it again" };
+```
+
+**Always `await` `put` and `take`.** In-process they may answer synchronously; in
+dev mode they are a round trip to the engine and answer a Promise. Awaiting is
+correct for both.
+
+| | |
+|---|---|
+| **Bound to the conversation** | A handle resolves only in the conversation that produced it. |
+| **One-shot** | A successful `take` consumes the entry; taking the same handle again answers `null`. |
+| **Expires** | Every entry lives a short time (`ttlMs`, capped by the engine). Anything that must outlive the turn belongs in durable storage. |
+| **`null` does not say why** | Unknown, already taken, expired, or produced in another conversation all answer `null`, on purpose: a distinguishable "wrong conversation" would reveal whether a handle exists. |
+
+`put` throws (or rejects) when the engine refuses the payload, for example
+because it exceeds the size limit or the store is full. In dev mode an artifact
+also has to fit in one dev frame (`MAX_DEV_FRAME_BYTES`, 1 MiB once
+base64-encoded, so roughly 765 KB raw): a larger `put` rejects locally without
+being sent, and a larger `take` rejects without consuming the artifact.
+
 ## `plugin.json` (at your repo root)
 
 ```json
@@ -224,10 +257,10 @@ addons), tools and hooks as default exports of `*.tool.ts` / `*.hook.ts`, and a
 - `toJsonSchema(zodSchema)` — the zod→JSON-Schema conversion `defineTool` uses.
 - `normalizeRequiredSecrets`, `requiredSecretKeys` — helpers for the secrets contract.
 - Tool types: `ToolSpec`, `ToolDefinition`, `ToolInfo`, `ToolInputExample`, `RequiredSecretSpec`, `RequiredSecretsInput`.
-- Context types: `ToolContext`, `InstanceSlug`, `AuditLogger`, `Attachment`, `ChannelStateIdentity`, `ConversationStateApi`, `ConversationHistoryApi`, `ConversationMessage`, `ConversationRole`, `RecentMessagesOptions`, `ToolApiKeys`, `OAuthAccessApi`, `OAuthTokenResult`.
+- Context types: `ToolContext`, `InstanceSlug`, `AuditLogger`, `Attachment`, `ChannelStateIdentity`, `ConversationStateApi`, `ConversationHistoryApi`, `ConversationMessage`, `ConversationRole`, `RecentMessagesOptions`, `ToolApiKeys`, `OAuthAccessApi`, `OAuthTokenResult`, `ArtifactApi`, `ArtifactPayload`.
 - Knowledge types: `KnowledgeApi`, `KnowledgeAccessLevel`, `KnowledgeOrigin`, `KnowledgeDenialReason`, `KnowledgeSearchHit`, `KnowledgeSearchOptions`, `KnowledgeDocumentSummary`, `KnowledgeDocumentContent`, `KnowledgeListOptions`, `KnowledgeWriteResult`.
 - Hook types: `HookSpec`, `HookFunctionDefinition`, `HookContext`, `HookResult`, `HookEvent`, `HookEventPayload`, `HookAi`.
-- `@polyant-ai/plugin-sdk/dev` (separate entry point): `serveDevSession`, `loadToolsFromPaths`, `loadHooksFromPaths`, `devHook`, `isToolDefinition`, `isHookDefinition`, `toDeclarations`, `toHookDeclarations`, `createCtxProxy`, `createHookCtxProxy`, `defaultWebSocketFactory`, the ported wire protocol (`DEV_PROTOCOL_VERSION`, `clientFrameSchema`, `serverFrameSchema`, `parseServerFrame`, `serializeClientFrame`, `CTX_OPS`) and its types. See **Dev mode** above.
+- `@polyant-ai/plugin-sdk/dev` (separate entry point): `serveDevSession`, `loadToolsFromPaths`, `loadHooksFromPaths`, `devHook`, `isToolDefinition`, `isHookDefinition`, `toDeclarations`, `toHookDeclarations`, `createCtxProxy`, `createHookCtxProxy`, `defaultWebSocketFactory`, the ported wire protocol (`DEV_PROTOCOL_VERSION`, `clientFrameSchema`, `serverFrameSchema`, `parseServerFrame`, `serializeClientFrame`, `CTX_OPS`, `MAX_DEV_FRAME_BYTES`) and its types. See **Dev mode** above.
 
 ## Dev mode: run a local tool inside a remote agent
 
@@ -235,7 +268,7 @@ addons), tools and hooks as default exports of `*.tool.ts` / `*.hook.ts`, and a
 pulled in by the root import). It connects your local `*.tool.ts` files to a remote
 Polyant agent over the engine's dev bridge: the agent equips them for a turn and calls
 their real `execute` with the real `ToolContext` — scoped secrets, conversation state,
-audit, OAuth, history. Your code never leaves your machine.
+audit, OAuth, history, knowledge, artifacts. Your code never leaves your machine.
 
 Issue a per-agent token from the agent's **Dev** tab in the admin panel, then:
 
