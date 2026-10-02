@@ -194,6 +194,7 @@ the same re-embedding as any other when that embedder changes.
 | `namespace` | Prefix applied to every tool name (`<namespace>:<name>`). Defaults to `name`. |
 | `displayName` | Optional. How the admin panel names the plugin in the agent's Tools section and in the tool picker. Without it the panel humanizes the namespace. |
 | `description` | Optional. One sentence on what the plugin's tools are for, shown when the picker is browsed by plugin. |
+| `longDescription` | Optional, marketplace. A few paragraphs shown, expandable, on the plugin's page: inline text, or the path of a `.md`/`.txt` file in the repo. Paragraphs are separated by a blank line. |
 | `icon` | Optional, marketplace. Path (inside the repo) to a square PNG, WebP or SVG of at most 32 KiB. Without it the catalogue shows the name's initials. |
 | `category` | Optional, marketplace. Groups and filters the plugin in the install catalogue. Without it the plugin is listed as uncategorised. |
 | `publisher` | Optional, marketplace. Shown next to the name. Defaults to `Exelab` at publication. |
