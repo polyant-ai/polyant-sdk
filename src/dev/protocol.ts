@@ -148,8 +148,10 @@ export const CTX_OPS = [
   // `{ data, filename, mime } | null`. Both stay within MAX_DEV_FRAME_BYTES: the
   // client refuses a put that would not fit before sending it, and the engine
   // answers an error — without consuming the artifact — for a take whose
-  // response would not fit. ADDITIVE (no DEV_PROTOCOL_VERSION bump): an engine
-  // that does not know them answers an error, which rejects the call.
+  // response would not fit. No DEV_PROTOCOL_VERSION bump, but NOT harmless
+  // against an older engine: one that does not know these ops fails to parse
+  // the frame and closes the session. Use them against an engine that ships
+  // them (Enterprise 1.2.0-ee and later).
   "artifacts.put",
   "artifacts.take",
   // `ctx.ai.chat` exists on a hook context and not on a tool one, and it is
