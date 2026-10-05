@@ -87,9 +87,9 @@ describe("toHookDeclarations", () => {
     // Unlike a tool, a hook is resolved by NAME and not equipped by collision,
     // so what it substitutes is something the client has to say.
     const [declaration] = toHookDeclarations([
-      guard(undefined, { overrides: "dentalpro:greeting" }),
+      guard(undefined, { overrides: "acme:greeting" }),
     ]);
-    expect(declaration).toMatchObject({ overrides: "dentalpro:greeting", bindTo: null });
+    expect(declaration).toMatchObject({ overrides: "acme:greeting", bindTo: null });
   });
 
   it("still declares a hook with no route", () => {
@@ -204,7 +204,7 @@ describe("serveDevSession — hooks", () => {
     const events: DevSessionEvent[] = [];
     const { handle, socket } = await connect({ hooks: [guard()], events });
 
-    handle.updateHooks([guard(undefined, { overrides: "dentalpro:greeting" })]);
+    handle.updateHooks([guard(undefined, { overrides: "acme:greeting" })]);
     socket.deliver({ type: "hooks.update.result", ok: false, warnings: [], reason: "nope" });
     await tick();
 
@@ -219,7 +219,7 @@ describe("serveDevSession — hooks", () => {
     const events: DevSessionEvent[] = [];
     const { handle, socket } = await connect({ hooks: [guard()], events });
 
-    handle.updateHooks([guard(undefined, { overrides: "dentalpro:greeting" })]);
+    handle.updateHooks([guard(undefined, { overrides: "acme:greeting" })]);
     socket.deliver({ type: "hooks.update.result", ok: true, warnings: ["heads up"] });
     await tick();
 

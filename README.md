@@ -208,13 +208,13 @@ being sent, and a larger `take` rejects without consuming the artifact.
 
 ```json
 {
-  "name": "innovasemplice",
+  "name": "acme-tools",
   "version": "1.0.0",
   "engine": ">=0.1.0",
   "toolsDir": "tools",
-  "namespace": "innova",
-  "displayName": "Innova Semplice",
-  "description": "Quotes and contracts from the Innova back office."
+  "namespace": "acme",
+  "displayName": "Acme",
+  "description": "Order status and returns from the Acme back office."
 }
 ```
 
@@ -224,6 +224,7 @@ being sent, and a larger `take` rejects without consuming the artifact.
 | `version` | Your plugin's version (independent of the engine). |
 | `engine` | Semver range of engine versions you support; mismatch → the engine skips your plugin with a warning. |
 | `toolsDir` | Dir scanned for `*.tool.ts` (default `tools`). |
+| `hooksDir` | Dir scanned for `*.hook.ts` (default `hooks`). |
 | `namespace` | Prefix applied to every tool name (`<namespace>:<name>`). Defaults to `name`. |
 | `displayName` | Optional. How the admin panel names the plugin in the agent's Tools section and in the tool picker. Without it the panel humanizes the namespace. |
 | `description` | Optional. One sentence on what the plugin's tools are for, shown when the picker is browsed by plugin. |
@@ -232,12 +233,48 @@ being sent, and a larger `take` rejects without consuming the artifact.
 | `category` | Optional, marketplace. Groups and filters the plugin in the install catalogue. Without it the plugin is listed as uncategorised. |
 | `publisher` | Optional, marketplace. Shown next to the name. Defaults to `Exelab` at publication. |
 | `documentationUrl` | Optional, marketplace. HTTPS link opened from the plugin's detail in the catalogue. |
+| `oauthProviders` | Optional. OAuth providers your tools use through `ctx.oauth`, registered into the engine's broker at boot. |
+| `system` | Optional, image-baked plugins only. What the engine's container image must carry for your tools to work; see below. |
 
 Tools are enabled one by one on each agent; the plugin is how they are grouped
 and named, never what is switched. Engines that predate `displayName` and
 `description` ignore them, so adding them does not narrow your `engine` range.
 The marketplace fields are read only when the plugin is published; every engine
 ignores them in `plugin.json`, so they never narrow the range either.
+
+### System requirements (`system`)
+
+A plugin that shells out to a binary, links against a system library, or needs an
+environment variable pointing at one declares it in `system`:
+
+```json
+"system": {
+  "apk": ["chromium", "nss"],
+  "npmGlobal": [],
+  "env": { "PUPPETEER_EXECUTABLE_PATH": "/usr/bin/chromium-browser" }
+}
+```
+
+| Field | Meaning |
+|-------|---------|
+| `apk` | Alpine packages installed into the engine's runtime image. Default `[]`. |
+| `npmGlobal` | npm packages installed globally, for the executables they put on `PATH`. Default `[]`. |
+| `env` | Environment variables (string to string) set in the image, typically pointing at what `apk` or `npmGlobal` installed. Default `{}`. |
+
+The block is read when the engine **image is built**, never at runtime: the build
+collects the blocks of every plugin baked into it and installs their union. A
+plugin whose binary is missing therefore fails on the tool call, not at boot, and
+an image built without your plugin does not carry what it needs. A declared
+variable is a default: a value set in the container environment, even an empty
+one, wins. Two plugins declaring one variable with different values fail the
+build. Package names must be plain enough to survive an argument list; there is
+no allowlist, because including a plugin in a build is already the decision to
+trust it.
+
+`system` applies only to a plugin baked into the image. A **marketplace bundle
+cannot carry it**: the runtime manifest refuses the key, and publication refuses a
+plugin that declares one, since an installed release cannot change the image it
+runs in.
 
 ## Publishing to the marketplace
 
@@ -318,7 +355,7 @@ import { devHook } from "@polyant-ai/plugin-sdk/dev";
 export default defineHook({ name: "guard", description: "…", handler: async (ctx) => … });
 
 // Either run in place of a function the agent already has…
-export const dev = devHook({ overrides: "dentalpro:greeting" });
+export const dev = devHook({ overrides: "acme:greeting" });
 // …or run on an event no configured row mentions, for this session only:
 export const dev = devHook({ bindTo: { event: "message_received", position: 10 } });
 ```
