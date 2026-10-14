@@ -16,6 +16,17 @@ This package does **NOT own the tool registry** — that belongs to the engine l
 - **Never** do a cross-package `instanceof` (it would fail: different classes from different copies of the SDK/zod).
 - The types in `context-types.ts` are **structural** interfaces that mirror the engine's concrete shapes (`AuditLogger`, `Attachment`, `ConversationStateApi`, `ToolApiKeys`): the `InstanceSlug` brand is type-level only (phantom field), so the engine's concrete objects satisfy the contract **without importing the internals**.
 
+## Text people read vs text the model reads
+
+Every authoring field belongs to one audience. Model-facing text (`description` of a
+tool, `parameters` `.describe()`, `inputExamples`) stays one string: it is prompt. Text a
+person reads in the panel or the marketplace (`summary` of a tool or hook, `label` and
+`description` of a `requiredSecrets` field, plugin `displayName`/`description`) is a
+`LocalizedText` (`src/localized-text.ts`), validated at load with the engine's own tag
+pattern. A new person-facing field is a `LocalizedText` from the start; `category` and
+`choices` are ids and values, not text. A new localized field needs an engine that
+accepts it, so say in the CHANGELOG which engine version it requires.
+
 ## Ironclad rules
 
 1. **Zero imports from the engine internals.** The SDK is self-contained; shared types are re-declared structurally in `context-types.ts`.
@@ -52,7 +63,7 @@ The **SDK version IS the compatibility contract.** It binds to `plugin.json.engi
 ```bash
 npm run build       # tsc → dist/ (tsconfig.build.json)
 npm run typecheck   # tsc --noEmit
-npm test            # vitest (contract 8, context-types 6, knowledge-api 11, hooks 5, hooks-contract 1, dev 42)
+npm test            # vitest
 ```
 
 ## Entry points

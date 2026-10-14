@@ -16,6 +16,7 @@ import {
   type RequiredSecretsInput,
   type RequiredSecretSpec,
 } from "./contract.js";
+import { assertLocalizedText, type LocalizedText } from "./localized-text.js";
 
 /** Conversation lifecycle events a hook can subscribe to. */
 export type HookEvent =
@@ -123,7 +124,11 @@ export type HookResult =
  */
 export interface HookSpec {
   name: string;
+  /** What the hook does, for whoever maintains it. One string. */
   description: string;
+  /** One sentence per locale on what the hook does, shown in the admin panel and the
+   * marketplace. Without it they show `description`. */
+  summary?: LocalizedText;
   /** Scoped secrets, same spec shape (and load-time validation) as tools. */
   requiredSecrets?: RequiredSecretsInput;
   /** Declare `true` if the handler may return `replaceResponse`, so the engine
@@ -139,6 +144,7 @@ export interface HookSpec {
 export interface HookFunctionDefinition {
   name: string;
   description: string;
+  summary?: LocalizedText;
   requiredSecrets: RequiredSecretSpec[];
   mutatesResponse?: boolean;
   handler: (ctx: HookContext) => Promise<HookResult> | HookResult;
@@ -150,9 +156,11 @@ export interface HookFunctionDefinition {
  * definition the engine loader collects.
  */
 export function defineHook(spec: HookSpec): HookFunctionDefinition {
+  if (spec.summary !== undefined) assertLocalizedText(spec.summary, `Hook "${spec.name}": summary`);
   return {
     name: spec.name,
     description: spec.description,
+    summary: spec.summary,
     requiredSecrets: normalizeRequiredSecrets(spec.requiredSecrets, spec.name),
     mutatesResponse: spec.mutatesResponse,
     handler: spec.handler,

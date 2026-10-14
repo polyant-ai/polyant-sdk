@@ -37,6 +37,8 @@ export type {
   ArtifactPayload,
   ArtifactApi,
 } from "./context-types.js";
+export { LOCALE_TAG_PATTERN, assertLocalizedText } from "./localized-text.js";
+export type { LocalizedText } from "./localized-text.js";
 export { defineHook } from "./hooks.js";
 export type {
   HookSpec,

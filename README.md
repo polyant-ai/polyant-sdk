@@ -14,7 +14,7 @@ repo, resolve its own dependencies, and be built/bundled independently.
 
 ```bash
 # public git repo — reference by tag (no auth needed)
-npm i -D git+https://github.com/polyant-ai/polyant-sdk.git#v1.4.0
+npm i -D git+https://github.com/polyant-ai/polyant-sdk.git#v1.10.0
 npm i zod              # peer dependency (you author schemas in zod)
 ```
 
@@ -23,7 +23,7 @@ Your plugin's `package.json`:
 ```jsonc
 {
   "peerDependencies": { "@polyant-ai/plugin-sdk": "*" },
-  "devDependencies":  { "@polyant-ai/plugin-sdk": "git+https://github.com/polyant-ai/polyant-sdk.git#v1.4.0" },
+  "devDependencies":  { "@polyant-ai/plugin-sdk": "git+https://github.com/polyant-ai/polyant-sdk.git#v1.10.0" },
   "dependencies":     { "zod": "^3.23.0" /* + any lib your tools call */ }
 }
 ```
@@ -38,11 +38,19 @@ import { z } from "zod";
 
 export default defineTool({
   name: "bookAppointment",              // becomes "<namespace>:bookAppointment"
-  description: "Book an appointment in the CRM.",
-  category: "plugin",
+  description: "Book an appointment in the CRM.",   // read by the model: one string
+  summary: {                            // read by people in the panel and the marketplace
+    "en-US": "Books an appointment in the CRM.",
+    "it-IT": "Prenota un appuntamento nel CRM.",
+  },
+  category: "crm",
   requiredSecrets: [{                   // a field in the tool's panel: give it a title and one sentence
     key: "crm_api_key", type: "text",
-    label: "CRM API key", description: "Key of the CRM account the appointments are written to.",
+    label: { "en-US": "CRM API key", "it-IT": "Chiave API del CRM" },
+    description: {
+      "en-US": "Key of the CRM account the appointments are written to.",
+      "it-IT": "Chiave dell'account CRM in cui vengono scritti gli appuntamenti.",
+    },
   }],
   parameters: z.object({                // STATIC schema (must not depend on ctx)
     patientId: z.string(),
@@ -65,6 +73,42 @@ data boundary is why multiple copies of this SDK / zod across plugins are
 harmless. `execute(input, ctx)` runs your logic; do runtime/semantic validation
 inside it and return `{ error: "..." }` rather than throwing.
 
+### Text people read, text the model reads
+
+Polyant shows a plugin to two audiences, and the SDK keeps their text apart.
+
+The model reads `description`, the `parameters` schema with its `.describe()`
+strings, and `inputExamples`. Write them in English, as one string: they are
+part of the prompt, and translating them would change how the agent behaves
+from one locale to the next.
+
+People read `summary` (the sentence the panel's tool list and the marketplace
+show for the tool), the `label` and `description` of each `requiredSecrets`
+field, and the plugin's `displayName` and `description` in `plugin.json`. Each
+of these is a `LocalizedText`: one string per canonical BCP 47 tag, or a plain
+string that stands for every locale.
+
+```ts
+summary: { "en-US": "Books an appointment in the CRM.", "it-IT": "Prenota un appuntamento nel CRM." }
+```
+
+The panel shows the reader's tag, else the same language, else English, else
+the first tag alphabetically, so a map should carry at least `en-US`. Tags are
+canonical (`en-US`, `it-IT`, `pt-BR`, `zh-Hant-TW`); `defineTool`,
+`defineHook` and `normalizeRequiredSecrets` throw at module load on an empty
+text or a tag that is not, so a typo fails your own tests. A tool without
+`summary` is shown with the first line of its `description`; a hook without
+one is shown with its `description`.
+
+`category` is an id (`crm`, `email`, `calendar`, `files`), not text: the panel
+translates the ids it knows and humanizes the others, and groups tools that
+share one. `select` `choices` are stored values and are shown as written.
+
+`summary` and localized labels need engine 1.3.0 or later, because older
+engines expect the labels as strings: declare `"engine": ">=1.3.0"` in
+`plugin.json`. Dev mode does not send `summary`; the panel shows a tool served
+from a dev session with the first line of its `description`.
+
 ### Rules for `parameters` (OpenAI strict-mode compatible)
 
 - Use `.nullable()`, **not** `.optional()` / `.default()` (apply defaults in `execute`).
@@ -86,6 +130,7 @@ import { defineHook } from "@polyant-ai/plugin-sdk";
 export default defineHook({
   name: "dirty-output-guard",
   description: "Replay the turn when the model emits corrupted output.",
+  summary: { "en-US": "Replays a turn with corrupted output.", "it-IT": "Ripete un turno con output corrotto." },
   mutatesResponse: true,                 // required to return replaceResponse / regenerate
   handler: (ctx) => {
     const { text, regenerationCount } = ctx.payload.response!;   // response_generated only
@@ -210,11 +255,14 @@ being sent, and a larger `take` rejects without consuming the artifact.
 {
   "name": "acme-tools",
   "version": "1.0.0",
-  "engine": ">=0.1.0",
+  "engine": ">=1.3.0",
   "toolsDir": "tools",
   "namespace": "acme",
-  "displayName": "Acme",
-  "description": "Order status and returns from the Acme back office."
+  "displayName": { "en-US": "Acme", "it-IT": "Acme" },
+  "description": {
+    "en-US": "Order status and returns from the Acme back office.",
+    "it-IT": "Stato degli ordini e resi dal gestionale Acme."
+  }
 }
 ```
 
@@ -226,21 +274,24 @@ being sent, and a larger `take` rejects without consuming the artifact.
 | `toolsDir` | Dir scanned for `*.tool.ts` (default `tools`). |
 | `hooksDir` | Dir scanned for `*.hook.ts` (default `hooks`). |
 | `namespace` | Prefix applied to every tool name (`<namespace>:<name>`). Defaults to `name`. |
-| `displayName` | Optional. How the admin panel names the plugin in the agent's Tools section and in the tool picker. Without it the panel humanizes the namespace. |
-| `description` | Optional. One sentence on what the plugin's tools are for, shown when the picker is browsed by plugin. |
-| `longDescription` | Optional, marketplace. A few paragraphs shown, expandable, on the plugin's page: inline text, or the path of a `.md`/`.txt` file in the repo. Paragraphs are separated by a blank line. |
+| `displayName` | Optional, `LocalizedText`. How the admin panel names the plugin in the agent's Tools section and in the tool picker. Without it the panel humanizes the namespace. |
+| `description` | Optional, `LocalizedText`. One sentence on what the plugin's tools are for, shown when the picker is browsed by plugin. |
+| `longDescription` | Optional, marketplace, `LocalizedText`. A few paragraphs shown, expandable, on the plugin's page: inline text, or the path of a `.md`/`.txt` file in the repo. Paragraphs are separated by a blank line. |
 | `icon` | Optional, marketplace. Path (inside the repo) to a square PNG, WebP or SVG of at most 32 KiB. Without it the catalogue shows the name's initials. |
-| `category` | Optional, marketplace. Groups and filters the plugin in the install catalogue. Without it the plugin is listed as uncategorised. |
+| `category` | Optional, marketplace, `LocalizedText`. Groups and filters the plugin in the install catalogue. Without it the plugin is listed as uncategorised. |
 | `publisher` | Optional, marketplace. Shown next to the name. Defaults to `Exelab` at publication. |
 | `documentationUrl` | Optional, marketplace. HTTPS link opened from the plugin's detail in the catalogue. |
 | `oauthProviders` | Optional. OAuth providers your tools use through `ctx.oauth`, registered into the engine's broker at boot. |
 | `system` | Optional, image-baked plugins only. What the engine's container image must carry for your tools to work; see below. |
 
 Tools are enabled one by one on each agent; the plugin is how they are grouped
-and named, never what is switched. Engines that predate `displayName` and
-`description` ignore them, so adding them does not narrow your `engine` range.
-The marketplace fields are read only when the plugin is published; every engine
-ignores them in `plugin.json`, so they never narrow the range either.
+and named, never what is switched. A `LocalizedText` field is either a plain
+string or a map of BCP 47 tags (see [Text people read, text the model
+reads](#text-people-read-text-the-model-reads)). A map in `displayName` or
+`description` needs engine 1.3.0 or later: an older engine rejects the
+manifest and skips the plugin, so declare `"engine": ">=1.3.0"` when you use
+one. The marketplace fields are read only when the plugin is published; every
+engine ignores them in `plugin.json`, so they never narrow the range.
 
 ### System requirements (`system`)
 
