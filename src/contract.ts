@@ -3,6 +3,7 @@
 import type { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import type { KnowledgeAccessLevel, ToolContext } from "./context-types.js";
+import { assertLocalizedText, type LocalizedText } from "./localized-text.js";
 
 // ---------------------------------------------------------------------------
 // requiredSecrets contract (moved verbatim from the engine registry — the
@@ -12,11 +13,11 @@ import type { KnowledgeAccessLevel, ToolContext } from "./context-types.js";
 export interface RequiredSecretSpec {
   key: string;
   type: "text" | "select";
-  /** The field's title in the tool's panel. Without it the panel humanizes `key`. */
-  label?: string;
-  /** What the value is and where to find it, shown under the title. Without it the
-   * panel says the author gave no description — worth one sentence. */
-  description?: string;
+  /** The field's title in the tool's panel, per locale. Without it the panel humanizes `key`. */
+  label?: LocalizedText;
+  /** What the value is and where to find it, shown under the title, per locale.
+   * Without it the panel says the author gave no description — worth one sentence. */
+  description?: LocalizedText;
   choices?: string[];
   optional?: boolean;
   /** Credential to mask (`true`) vs readable config value like a base URL (`false`).
@@ -50,6 +51,10 @@ export function normalizeRequiredSecrets(
     if (!entry.key) {
       throw new Error(`${prefix}requiredSecrets[${index}] missing 'key'.`);
     }
+    if (entry.label !== undefined) assertLocalizedText(entry.label, `${prefix}requiredSecrets[${index}] "${entry.key}" label`);
+    if (entry.description !== undefined) {
+      assertLocalizedText(entry.description, `${prefix}requiredSecrets[${index}] "${entry.key}" description`);
+    }
     if (entry.type === "select" && (!entry.choices || entry.choices.length === 0)) {
       throw new Error(
         `${prefix}requiredSecrets[${index}] "${entry.key}": type 'select' requires non-empty 'choices'.`,
@@ -73,8 +78,18 @@ export function requiredSecretKeys(input: RequiredSecretsInput | undefined): str
  */
 export function oauthRequiredSecrets(provider: string): RequiredSecretSpec[] {
   return [
-    { key: `${provider}_oauth_client_id`, type: "text", sensitive: false, label: `${provider} OAuth client id` },
-    { key: `${provider}_oauth_client_secret`, type: "text", sensitive: true, label: `${provider} OAuth client secret` },
+    {
+      key: `${provider}_oauth_client_id`,
+      type: "text",
+      sensitive: false,
+      label: { "en-US": `${provider} OAuth client ID`, "it-IT": `Client ID OAuth ${provider}` },
+    },
+    {
+      key: `${provider}_oauth_client_secret`,
+      type: "text",
+      sensitive: true,
+      label: { "en-US": `${provider} OAuth client secret`, "it-IT": `Client secret OAuth ${provider}` },
+    },
   ];
 }
 
@@ -129,7 +144,14 @@ export interface ToolInputExample {
  */
 export interface ToolSpec {
   name: string;
+  /** What the model reads to decide when and how to call the tool. One string, never localized. */
   description: string;
+  /** One sentence per locale on what the tool does, for the people who browse it in
+   * the admin panel and the marketplace. Without it they see the first line of
+   * `description`. */
+  summary?: LocalizedText;
+  /** A short id grouping the tool in the panel (`crm`, `email`, `calendar`). The
+   * panel translates the ids it knows and humanizes the others; it is not text. */
   category?: string;
   /** Env vars that must be set for this tool to be available (pruned at load). */
   requiredEnv?: string[];
@@ -162,6 +184,7 @@ export interface ToolSpec {
 export interface ToolDefinition {
   name: string;
   description: string;
+  summary?: LocalizedText;
   category?: string;
   requiredEnv?: string[];
   requiredSecrets: RequiredSecretSpec[];
@@ -179,6 +202,7 @@ export interface ToolDefinition {
 export interface ToolInfo {
   name: string;
   description: string;
+  summary?: LocalizedText;
   category: string;
   requiredSecrets?: RequiredSecretSpec[];
   requiredKnowledge?: KnowledgeAccessLevel;
@@ -206,9 +230,11 @@ export function toJsonSchema(schema: z.ZodType): Record<string, unknown> {
  * here, at module load, so the engine consumes only data.
  */
 export function defineTool(spec: ToolSpec): ToolDefinition {
+  if (spec.summary !== undefined) assertLocalizedText(spec.summary, `Tool "${spec.name}": summary`);
   return {
     name: spec.name,
     description: spec.description,
+    summary: spec.summary,
     category: spec.category,
     requiredEnv: spec.requiredEnv,
     requiredSecrets: normalizeRequiredSecrets(spec.requiredSecrets, spec.name),

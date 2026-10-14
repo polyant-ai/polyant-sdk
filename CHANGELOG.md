@@ -10,7 +10,30 @@ Consumers reference a release by its git tag:
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-10-14
+
+### Added
+
+- `LocalizedText`, `LOCALE_TAG_PATTERN` and `assertLocalizedText`: text a person
+  reads is one string per canonical BCP 47 tag, or a plain string for every
+  locale.
+- `summary` on `defineTool` and `defineHook`: one sentence per locale for the
+  admin panel and the marketplace. The model never reads it; without it they
+  show the first line of `description`.
+
 ### Changed
+
+- `label` and `description` of a `requiredSecrets` field accept a
+  `LocalizedText`. `normalizeRequiredSecrets`, `defineTool` and `defineHook`
+  throw at load on an empty text or a tag that is not canonical.
+- `oauthRequiredSecrets` labels the two client fields in English and Italian.
+- Using a summary or a localized label needs engine 1.3.0 or later.
+
+### Documentation
+
+- The README separates the text the model reads, which stays one English
+  string, from the text people read, and documents `LocalizedText` in
+  `plugin.json`. The install example points at the current tag.
 
 - The README documents the `system` block of `plugin.json`, which image-baked
   plugins use to ask the engine image for packages and environment variables, and
