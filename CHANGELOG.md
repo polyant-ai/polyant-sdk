@@ -141,7 +141,8 @@ Consumers reference a release by its git tag:
   with `normalizeRequiredSecrets` and `requiredSecretKeys`, and the stateless
   tool-authoring types, under the Apache-2.0 licence.
 
-[Unreleased]: https://github.com/polyant-ai/polyant-sdk/compare/v1.9.0...HEAD
+[Unreleased]: https://github.com/polyant-ai/polyant-sdk/compare/v1.10.0...HEAD
+[1.10.0]: https://github.com/polyant-ai/polyant-sdk/compare/v1.9.0...v1.10.0
 [1.9.0]: https://github.com/polyant-ai/polyant-sdk/compare/v1.8.0...v1.9.0
 [1.8.0]: https://github.com/polyant-ai/polyant-sdk/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/polyant-ai/polyant-sdk/compare/v1.6.0...v1.7.0
