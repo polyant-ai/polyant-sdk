@@ -22,6 +22,7 @@ export type {
   RecentMessagesOptions,
   ConversationHistoryApi,
   ToolApiKeys,
+  AgentAi,
   OAuthTokenResult,
   OAuthAccessApi,
   KnowledgeAccessLevel,

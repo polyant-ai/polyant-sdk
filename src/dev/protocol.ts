@@ -154,9 +154,10 @@ export const CTX_OPS = [
   // them (Enterprise 1.2.0-ee and later).
   "artifacts.put",
   "artifacts.take",
-  // `ctx.ai.chat` exists on a hook context and not on a tool one, and it is
-  // async like every other op here. ADDITIVE: a client that does not know it
-  // never calls it. The request carries NO provider or model — the engine sets
+  // `ctx.ai.chat`, on a hook context and, since SDK 1.11.0, on a tool one; async
+  // like every other op here. ADDITIVE: a client that does not know it never
+  // calls it, and an engine that does not offer it on a tool context answers an
+  // error, which a tool falling back to its own client handles. The request carries NO provider or model — the engine sets
   // those from the turn, so a client cannot route the call at a model the agent
   // never admitted.
   "ai.chat",

@@ -79,6 +79,15 @@ describe("createCtxProxy", () => {
     expect(rpc).toHaveBeenCalledWith("oauth.connectResult", ["google"]);
   });
 
+  it("asks the engine's AI gateway with a tier, never a provider or a model", async () => {
+    const rpc = vi.fn().mockResolvedValue("yes");
+    const { ctx } = createCtxProxy({ inline: inline(), rpc });
+
+    const input = { system: "Answer yes or no.", messages: [{ role: "user" as const, content: "ok?" }], tier: "fast" as const };
+    await expect(ctx.ai?.chat(input)).resolves.toBe("yes");
+    expect(rpc).toHaveBeenCalledWith("ai.chat", [input]);
+  });
+
   it("revives a JSON-serialized Buffer back into an attachment Buffer", () => {
     const { ctx } = createCtxProxy({
       inline: inline({
