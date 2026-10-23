@@ -56,7 +56,7 @@ export default defineTool({
     patientId: z.string(),
     date: z.string().describe("ISO 8601"),
   }),
-  execute: async (input, ctx) => {      // ctx: instanceId, secrets, audit, state, apiKeys…
+  execute: async (input, ctx) => {      // ctx: instanceId, secrets, audit, state, ai, abortSignal…
     const key = ctx.secrets?.crm_api_key;
     // ... call your API, use ctx.audit / ctx.state ...
     return { status: "booked", id: "..." };
@@ -162,6 +162,28 @@ enforces a hard safety cap. If a pass returns both, `regenerate` wins.
 idempotent, and note that deterministic (`temperature: 0`) turns reproduce the
 same output and merely exhaust the cap (it suits sporadic output corruption, not
 systematic errors).
+
+## Asking a model from a tool (`ctx.ai`)
+
+A tool that needs a short LLM answer (a classification, a summary) asks the engine
+instead of building its own client from `ctx.apiKeys`:
+
+```ts
+const answer = await ctx.ai?.chat({
+  system: "Answer yes or no.",
+  messages: [{ role: "user", content: patientText }],
+  tier: "fast",
+});
+```
+
+The call goes through the engine's AI gateway with the agent's provider connection
+and the models it admits: it is recorded with its cost, counts towards the spend
+cap, and stops when the turn is cancelled or the tool's deadline passes. You pick a
+tier, never a provider or a model. Hooks have had the same `ctx.ai` from the start.
+
+`ctx.ai` is absent on engines that predate it, so keep a fallback while your plugin
+supports them. `ctx.abortSignal` is the same "nobody waits any more" signal for any
+other long work, such as a `fetch`.
 
 ## The agent's knowledge base (`ctx.knowledge`)
 
@@ -345,7 +367,7 @@ addons), tools and hooks as default exports of `*.tool.ts` / `*.hook.ts`, and a
 - `toJsonSchema(zodSchema)` — the zod→JSON-Schema conversion `defineTool` uses.
 - `normalizeRequiredSecrets`, `requiredSecretKeys` — helpers for the secrets contract.
 - Tool types: `ToolSpec`, `ToolDefinition`, `ToolInfo`, `ToolInputExample`, `RequiredSecretSpec`, `RequiredSecretsInput`.
-- Context types: `ToolContext`, `InstanceSlug`, `AuditLogger`, `Attachment`, `ChannelStateIdentity`, `ConversationStateApi`, `ConversationHistoryApi`, `ConversationMessage`, `ConversationRole`, `RecentMessagesOptions`, `ToolApiKeys`, `OAuthAccessApi`, `OAuthTokenResult`, `ArtifactApi`, `ArtifactPayload`.
+- Context types: `ToolContext`, `InstanceSlug`, `AuditLogger`, `Attachment`, `ChannelStateIdentity`, `ConversationStateApi`, `ConversationHistoryApi`, `ConversationMessage`, `ConversationRole`, `RecentMessagesOptions`, `ToolApiKeys`, `OAuthAccessApi`, `OAuthTokenResult`, `ArtifactApi`, `ArtifactPayload`, `AgentAi`.
 - Knowledge types: `KnowledgeApi`, `KnowledgeAccessLevel`, `KnowledgeOrigin`, `KnowledgeDenialReason`, `KnowledgeSearchHit`, `KnowledgeSearchOptions`, `KnowledgeDocumentSummary`, `KnowledgeDocumentContent`, `KnowledgeListOptions`, `KnowledgeWriteResult`.
 - Hook types: `HookSpec`, `HookFunctionDefinition`, `HookContext`, `HookResult`, `HookEvent`, `HookEventPayload`, `HookAi`.
 - `@polyant-ai/plugin-sdk/dev` (separate entry point): `serveDevSession`, `loadToolsFromPaths`, `loadHooksFromPaths`, `devHook`, `isToolDefinition`, `isHookDefinition`, `toDeclarations`, `toHookDeclarations`, `createCtxProxy`, `createHookCtxProxy`, `defaultWebSocketFactory`, the ported wire protocol (`DEV_PROTOCOL_VERSION`, `clientFrameSchema`, `serverFrameSchema`, `parseServerFrame`, `serializeClientFrame`, `CTX_OPS`, `MAX_DEV_FRAME_BYTES`) and its types. See **Dev mode** above.
