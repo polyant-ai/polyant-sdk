@@ -195,6 +195,12 @@ export function createCtxProxy(opts: { inline: InlineToolContext; rpc: CtxRpc })
     },
     knowledge,
     artifacts,
+    ai: {
+      // As on a hook: no provider or model is sent; the engine sets them from the turn.
+      async chat(input): Promise<string> {
+        return (await rpc("ai.chat", [input])) as string;
+      },
+    },
   };
 
   return {

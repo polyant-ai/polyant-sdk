@@ -7,6 +7,7 @@
 import type {
   ConversationStateApi,
   ConversationHistoryApi,
+  AgentAi,
   ConversationMessage,
   ToolApiKeys,
   AuditLogger,
@@ -36,14 +37,8 @@ export interface HookEventPayload {
   response?: { text: string; regenerationCount: number };
 }
 
-/** LLM access bound to the instance's configured model, via the engine ai-gateway. */
-export interface HookAi {
-  chat(input: {
-    messages: ConversationMessage[];
-    system?: string;
-    tier?: "fast" | "standard" | "heavy";
-  }): Promise<string>;
-}
+/** LLM access bound to the instance's configured model, via the engine ai-gateway. Same as a tool's {@link AgentAi}. */
+export type HookAi = AgentAi;
 
 /**
  * Everything a hook handler receives. Read-mostly; the only mutations are via

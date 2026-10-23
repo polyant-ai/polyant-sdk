@@ -10,6 +10,17 @@ Consumers reference a release by its git tag:
 
 ## [Unreleased]
 
+### Added
+
+- `ctx.ai` on `ToolContext`: a tool asks a model through the engine's AI gateway,
+  with a tier and the agent's provider connection, as a hook already could. The
+  call is recorded with its cost, counts towards the spend cap and stops when
+  nobody waits for it. Optional: absent on engines that predate it.
+- `ctx.abortSignal` on `ToolContext`: aborted when the turn is cancelled or the
+  tool's deadline passes. Optional, as above.
+- `AgentAi`, the shape of `ctx.ai`. `HookAi` stays, as an alias of it.
+- Dev mode: a local tool's `ctx.ai.chat` goes to the engine like a hook's.
+
 ## [1.10.0] - 2026-10-14
 
 ### Added

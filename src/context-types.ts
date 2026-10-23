@@ -306,6 +306,20 @@ export interface ArtifactApi {
 }
 
 /**
+ * LLM access bound to the agent's provider connection and the models it
+ * admits, through the engine's AI gateway: the call is recorded with its cost,
+ * counts towards the spend cap and stops when nobody waits for it any more.
+ * The caller picks a tier, never a provider or a model.
+ */
+export interface AgentAi {
+  chat(input: {
+    messages: ConversationMessage[];
+    system?: string;
+    tier?: "fast" | "standard" | "heavy";
+  }): Promise<string>;
+}
+
+/**
  * Runtime context passed to every tool's `execute(input, ctx)`.
  * Created by the engine and handed into the plugin's execute — the plugin only
  * reads/calls its members, so nothing here requires shared runtime identity.
@@ -344,4 +358,12 @@ export interface ToolContext {
    *  (see {@link ArtifactApi}). Always mounted by the engine; always `await`
    *  its methods. */
   artifacts: ArtifactApi;
+  /** LLM access through the engine (see {@link AgentAi}), instead of a client
+   *  built from `apiKeys`. Absent on engines that predate it — plugins MUST
+   *  handle undefined, for example by keeping their own client as a fallback. */
+  ai?: AgentAi;
+  /** Aborted when nobody waits for this call any more: the turn was cancelled
+   *  or the tool's deadline passed. Pass it to long work (fetch, LLM calls) so
+   *  it stops. Absent on engines that predate it. */
+  abortSignal?: AbortSignal;
 }
