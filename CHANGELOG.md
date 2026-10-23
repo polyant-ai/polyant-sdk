@@ -10,6 +10,8 @@ Consumers reference a release by its git tag:
 
 ## [Unreleased]
 
+## [1.11.0] - 2026-10-23
+
 ### Added
 
 - `ctx.ai` on `ToolContext`: a tool asks a model through the engine's AI gateway,
@@ -20,6 +22,9 @@ Consumers reference a release by its git tag:
   tool's deadline passes. Optional, as above.
 - `AgentAi`, the shape of `ctx.ai`. `HookAi` stays, as an alias of it.
 - Dev mode: a local tool's `ctx.ai.chat` goes to the engine like a hook's.
+
+`ctx.ai` and `ctx.abortSignal` on a tool need an engine released after Polyant
+1.3.3; on an older engine both are absent.
 
 ## [1.10.0] - 2026-10-14
 
@@ -152,7 +157,8 @@ Consumers reference a release by its git tag:
   with `normalizeRequiredSecrets` and `requiredSecretKeys`, and the stateless
   tool-authoring types, under the Apache-2.0 licence.
 
-[Unreleased]: https://github.com/polyant-ai/polyant-sdk/compare/v1.10.0...HEAD
+[Unreleased]: https://github.com/polyant-ai/polyant-sdk/compare/v1.11.0...HEAD
+[1.11.0]: https://github.com/polyant-ai/polyant-sdk/compare/v1.10.0...v1.11.0
 [1.10.0]: https://github.com/polyant-ai/polyant-sdk/compare/v1.9.0...v1.10.0
 [1.9.0]: https://github.com/polyant-ai/polyant-sdk/compare/v1.8.0...v1.9.0
 [1.8.0]: https://github.com/polyant-ai/polyant-sdk/compare/v1.7.0...v1.8.0
