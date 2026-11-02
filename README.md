@@ -14,7 +14,7 @@ repo, resolve its own dependencies, and be built/bundled independently.
 
 ```bash
 # public git repo — reference by tag (no auth needed)
-npm i -D git+https://github.com/polyant-ai/polyant-sdk.git#v1.11.0
+npm i -D git+https://github.com/polyant-ai/polyant-sdk.git#v1.12.0
 npm i zod              # peer dependency (you author schemas in zod 4, or zod 3)
 ```
 
@@ -23,7 +23,7 @@ Your plugin's `package.json`:
 ```jsonc
 {
   "peerDependencies": { "@polyant-ai/plugin-sdk": "*" },
-  "devDependencies":  { "@polyant-ai/plugin-sdk": "git+https://github.com/polyant-ai/polyant-sdk.git#v1.11.0" },
+  "devDependencies":  { "@polyant-ai/plugin-sdk": "git+https://github.com/polyant-ai/polyant-sdk.git#v1.12.0" },
   "dependencies":     { "zod": "^4.6.6" /* + any lib your tools call */ }
 }
 ```

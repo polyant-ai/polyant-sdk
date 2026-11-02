@@ -10,6 +10,8 @@ Consumers reference a release by its git tag:
 
 ## [Unreleased]
 
+## [1.12.0] - 2026-11-02
+
 ### Added
 
 - Zod 4 support. `defineTool` and `toJsonSchema` accept a Zod 4 schema and give
@@ -165,7 +167,8 @@ Consumers reference a release by its git tag:
   with `normalizeRequiredSecrets` and `requiredSecretKeys`, and the stateless
   tool-authoring types, under the Apache-2.0 licence.
 
-[Unreleased]: https://github.com/polyant-ai/polyant-sdk/compare/v1.11.0...HEAD
+[Unreleased]: https://github.com/polyant-ai/polyant-sdk/compare/v1.12.0...HEAD
+[1.12.0]: https://github.com/polyant-ai/polyant-sdk/compare/v1.11.0...v1.12.0
 [1.11.0]: https://github.com/polyant-ai/polyant-sdk/compare/v1.10.0...v1.11.0
 [1.10.0]: https://github.com/polyant-ai/polyant-sdk/compare/v1.9.0...v1.10.0
 [1.9.0]: https://github.com/polyant-ai/polyant-sdk/compare/v1.8.0...v1.9.0
