@@ -2,6 +2,7 @@
 
 import { describe, it, expect } from "vitest";
 import { z } from "zod";
+import { z as z3 } from "zod-v3";
 import { defineTool, toJsonSchema, normalizeRequiredSecrets } from "./contract.js";
 import type { ToolContext } from "./context-types.js";
 
@@ -72,6 +73,31 @@ describe("toJsonSchema", () => {
     const x = js.properties.x;
     const asString = JSON.stringify(x);
     expect(asString).toContain("null");
+  });
+
+  it("gives the same JSON for the same schema written in Zod 3 and in Zod 4", () => {
+    // Zod 3's builder API matches Zod 4's for everything below, so one builder
+    // takes either; the cast only quiets the two copies' unrelated types.
+    const build = (zz: typeof z) =>
+      zz.object({
+        query: zz.string().min(1).describe("What to search"),
+        limit: zz.number().int().min(1).max(50).default(10).describe("Max results"),
+        mode: zz.enum(["a", "b"]).optional(),
+        tags: zz.array(zz.string()).max(5).optional(),
+        when: zz.string().datetime().optional(),
+        email: zz.string().email().optional(),
+        code: zz.string().regex(/^[A-Z]{3}$/).optional(),
+        meta: zz.record(zz.string(), zz.unknown()).optional(),
+        nested: zz.object({ x: zz.boolean() }).nullable(),
+        either: zz.union([zz.string(), zz.number()]),
+        lit: zz.literal("x"),
+        strict: zz.object({ y: zz.string() }).strict(),
+        loose: zz.object({ y: zz.string() }).passthrough(),
+      });
+    const fromZod4 = toJsonSchema(build(z));
+    const fromZod3 = toJsonSchema(build(z3 as unknown as typeof z));
+    expect(fromZod4).toEqual(fromZod3);
+    expect(fromZod4).not.toHaveProperty("$schema");
   });
 
   it("carries requiredKnowledge through to the definition, absent when unset", () => {
