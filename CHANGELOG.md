@@ -10,6 +10,14 @@ Consumers reference a release by its git tag:
 
 ## [Unreleased]
 
+### Added
+
+- Zod 4 support. `defineTool` and `toJsonSchema` accept a Zod 4 schema and give
+  the model the same JSON Schema as the same schema written in Zod 3, field
+  descriptions included. The `zod` peer range is now `^3.23.0 || ^4.0.0`, so a
+  plugin on Zod 3 needs no change; a plugin moving to Zod 4 changes nothing the
+  engine receives.
+
 ## [1.11.0] - 2026-10-23
 
 ### Added

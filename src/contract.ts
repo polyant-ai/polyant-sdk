@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
+import * as zod from "zod";
 import type { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import type { KnowledgeAccessLevel, ToolContext } from "./context-types.js";
@@ -210,18 +211,93 @@ export interface ToolInfo {
 }
 
 /**
- * Convert a static Zod schema to a plain JSON Schema (jsonSchema7). `$refStrategy:
- * "none"` inlines everything (the AI SDK / OpenAI want a self-contained schema);
- * the `$schema` metadata key is stripped. Runs in the caller's realm using the
- * caller's Zod, so no cross-package `instanceof` is ever required downstream.
+ * Convert a static Zod schema to a plain JSON Schema (draft 7), self-contained
+ * (the AI SDK / OpenAI want no `$ref`s) and without the `$schema` metadata key.
+ * Runs in the caller's realm using the caller's Zod, so no cross-package
+ * `instanceof` is ever required downstream.
+ *
+ * Zod 3 and Zod 4 schemas both work, and produce the same JSON for the same
+ * schema: a Zod 3 schema goes through `zod-to-json-schema`, a Zod 4 schema
+ * through Zod's own `toJSONSchema`, adjusted where the two disagree (see
+ * {@link alignWithZod3Output}). The description of every field is prompt, so a
+ * plugin moving from Zod 3 to Zod 4 must not change what the model reads.
  */
 export function toJsonSchema(schema: z.ZodType): Record<string, unknown> {
-  const json = zodToJsonSchema(schema, { target: "jsonSchema7", $refStrategy: "none" }) as Record<
-    string,
-    unknown
-  >;
+  const json = isZod4Schema(schema) ? zod4ToJsonSchema(schema) : zod3ToJsonSchema(schema);
   delete json.$schema;
   return json;
+}
+
+/** A Zod 4 schema carries its internals under `_zod`; a Zod 3 one does not. */
+function isZod4Schema(schema: unknown): boolean {
+  return typeof schema === "object" && schema !== null && "_zod" in schema;
+}
+
+function zod3ToJsonSchema(schema: unknown): Record<string, unknown> {
+  // zod-to-json-schema is typed against Zod 3; the schema here is one.
+  return zodToJsonSchema(schema as Parameters<typeof zodToJsonSchema>[0], {
+    target: "jsonSchema7",
+    $refStrategy: "none",
+  }) as Record<string, unknown>;
+}
+
+type Zod4ToJsonSchema = (
+  schema: unknown,
+  params: {
+    target: "draft-7";
+    io: "input";
+    unrepresentable: "any";
+    override: (ctx: { zodSchema: unknown; jsonSchema: Record<string, unknown> }) => void;
+  },
+) => Record<string, unknown>;
+
+function zod4ToJsonSchema(schema: unknown): Record<string, unknown> {
+  // Zod 4 exports `toJSONSchema`; the root of Zod 3 (3.25 included) does not.
+  // It must be the caller's own Zod: `.describe()` is kept in that copy's
+  // registry, so another copy would convert the schema without descriptions.
+  const convert = (zod as unknown as { toJSONSchema?: Zod4ToJsonSchema }).toJSONSchema;
+  if (typeof convert !== "function") {
+    throw new Error(
+      "A Zod 4 schema reached the SDK, but the installed `zod` is version 3. Install zod 4, or build the schema with zod 3.",
+    );
+  }
+  return convert(schema, {
+    target: "draft-7",
+    // The model writes the input, so fields with a default are optional, as
+    // zod-to-json-schema had them.
+    io: "input",
+    unrepresentable: "any",
+    override: alignWithZod3Output,
+  });
+}
+
+/**
+ * Where Zod 4's converter and zod-to-json-schema disagree on the same schema,
+ * keep what Zod 3 plugins have always sent:
+ * - a plain `z.object` strips unknown keys, which zod-to-json-schema states as
+ *   `additionalProperties: false` and Zod 4's input mode leaves out;
+ * - a `.passthrough()` object allows any other key as `true`, where Zod 4
+ *   writes the equivalent `{}`;
+ * - a string format (`.email()`, `.datetime()`, …) is stated by `format` alone,
+ *   without the long regex Zod 4 adds next to it;
+ * - a record's keys are not described with `propertyNames`;
+ * - an integer states only the bounds the author set, without the safe-integer
+ *   range Zod 4 adds for `.int()`.
+ */
+function alignWithZod3Output(ctx: { zodSchema: unknown; jsonSchema: Record<string, unknown> }): void {
+  const type = (ctx.zodSchema as { _zod?: { def?: { type?: string } } })._zod?.def?.type;
+  const json = ctx.jsonSchema;
+  if (type === "object") {
+    const extra = json.additionalProperties;
+    if (extra === undefined) json.additionalProperties = false;
+    else if (typeof extra === "object" && extra !== null && Object.keys(extra).length === 0) json.additionalProperties = true;
+  }
+  if (type === "string" && typeof json.format === "string") delete json.pattern;
+  if (type === "record") delete json.propertyNames;
+  if (type === "number" && json.type === "integer") {
+    if (json.maximum === Number.MAX_SAFE_INTEGER) delete json.maximum;
+    if (json.minimum === Number.MIN_SAFE_INTEGER) delete json.minimum;
+  }
 }
 
 /**
