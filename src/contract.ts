@@ -280,7 +280,9 @@ function zod4ToJsonSchema(schema: unknown): Record<string, unknown> {
  *   writes the equivalent `{}`;
  * - a string format (`.email()`, `.datetime()`, …) is stated by `format` alone,
  *   without the long regex Zod 4 adds next to it;
- * - a record's keys are not described with `propertyNames`.
+ * - a record's keys are not described with `propertyNames`;
+ * - an integer states only the bounds the author set, without the safe-integer
+ *   range Zod 4 adds for `.int()`.
  */
 function alignWithZod3Output(ctx: { zodSchema: unknown; jsonSchema: Record<string, unknown> }): void {
   const type = (ctx.zodSchema as { _zod?: { def?: { type?: string } } })._zod?.def?.type;
@@ -292,6 +294,10 @@ function alignWithZod3Output(ctx: { zodSchema: unknown; jsonSchema: Record<strin
   }
   if (type === "string" && typeof json.format === "string") delete json.pattern;
   if (type === "record") delete json.propertyNames;
+  if (type === "number" && json.type === "integer") {
+    if (json.maximum === Number.MAX_SAFE_INTEGER) delete json.maximum;
+    if (json.minimum === Number.MIN_SAFE_INTEGER) delete json.minimum;
+  }
 }
 
 /**

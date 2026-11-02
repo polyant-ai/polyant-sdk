@@ -82,6 +82,10 @@ describe("toJsonSchema", () => {
       zz.object({
         query: zz.string().min(1).describe("What to search"),
         limit: zz.number().int().min(1).max(50).default(10).describe("Max results"),
+        offset: zz.number().int().min(1).nullable(),
+        count: zz.number().int().positive().optional(),
+        delta: zz.number().int(),
+        ratio: zz.number(),
         mode: zz.enum(["a", "b"]).optional(),
         tags: zz.array(zz.string()).max(5).optional(),
         when: zz.string().datetime().optional(),
